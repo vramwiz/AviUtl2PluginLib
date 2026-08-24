@@ -1,0 +1,13 @@
+*.~*
+__history/
+*.dcu
+*.local
+*.identcache
+*.exe
+*.dll
+*.map
+*.tds
+*.dsk
+*.rsm
+Win32/
+Win64/
