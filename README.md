@@ -7,6 +7,10 @@ AviUtl2向けDelphiプロジェクト間で共有するソースライブラリ�
 ```text
 AviUtl2Plugin/
 ├─ AviUtl2PluginLib/
+│  ├─ Lib/
+│  ├─ Launcher/
+│  ├─ Explorer/
+│  └─ Serif/
 ├─ Syncroh2/
 └─ OtherPlugin/
 ```
@@ -15,9 +19,10 @@ AviUtl2Plugin/
 
 ## 構成
 
-- 直下の各フォルダをライブラリ単位として管理します。
+- `Lib`配下には、特定機能に限定されない汎用ライブラリをライブラリ単位のフォルダで配置します。
+- リポジトリ直下には、複数プロジェクトから機能単位で利用する`Launcher`、`Explorer`、`Serif`を配置します。
 - Gitリポジトリはライブラリごとに分割せず、このリポジトリで一括管理します。
 - 製品固有の処理は各製品側に残し、複数のAviUtl2プラグインで利用するソースだけを配置します。
 
-2026-08-25時点では、`Syncroh2/Lib`にあった共通ライブラリに加え、複数プラグインで再利用する
-機能単位の `Launcher`、`Explorer`、`Serif` を移設しています。
+2026-08-25時点では、`Syncroh2/Lib`にあった共通ライブラリを`Lib`配下へ移設し、複数プラグインで
+再利用する機能単位の`Launcher`、`Explorer`、`Serif`をリポジトリ直下へ移設しています。

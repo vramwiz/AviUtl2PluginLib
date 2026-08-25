@@ -4,7 +4,7 @@ program EmotionCategoryTest;
 
 uses
   System.SysUtils,
-  EmotionCategory in 'Emotion\EmotionCategory.pas';
+  EmotionCategory in 'Lib\Emotion\EmotionCategory.pas';
 
 const
   NORMAL_PRESET = #$30CE#$30FC#$30DE#$30EB;
