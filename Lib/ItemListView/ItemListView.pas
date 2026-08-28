@@ -9,6 +9,7 @@ uses
 
 type
   TItemListLayout = (illRow, illIcon);
+  TItemListSelectionStyle = (ilssRow, ilssImageOverlay);
 
   // ネイティブ ListView に依存しない、縦型一覧表示の共通基盤。
   // データは保持せず、派生クラスが件数・文字列・画像を提供する。
@@ -29,6 +30,7 @@ type
     FScrollBar: TVerticalScrollBarControl;
     FSelectedIndices: TList<Integer>;
     FSelectionAnchor: Integer;
+    FSelectionStyle: TItemListSelectionStyle;
     procedure SetItemIndex(const Value: Integer);
     procedure SetRowHeight(const Value: Integer);
     procedure SetImageSize(const Value: Integer);
@@ -36,6 +38,7 @@ type
     procedure SetCaptionVisible(const Value: Boolean);
     procedure SetWheelScrollRows(const Value: Integer);
     procedure SetScrollOffset(const Value: Integer);
+    procedure SetSelectionStyle(const Value: TItemListSelectionStyle);
     procedure EditExit(Sender: TObject);
     procedure EditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     function GetCaptionEditing: Boolean;
@@ -53,6 +56,7 @@ type
     procedure DrawItemImage(Index: Integer; const Bounds: TRect;
       Target: TCanvas); virtual;
     procedure DrawItem(Index: Integer; const Bounds: TRect); virtual;
+    procedure DrawImageSelectionOverlay(const Bounds: TRect); virtual;
     function GetItemSelected(Index: Integer): Boolean; virtual;
     function ItemImageRect(Index: Integer): TRect;
     function ItemTextRect(Index: Integer): TRect;
@@ -96,6 +100,8 @@ type
     property ImageSize: Integer read FImageSize write SetImageSize;
     property Layout: TItemListLayout read FLayout write SetLayout;
     property ScrollOffset: Integer read FScrollOffset write SetScrollOffset;
+    property SelectionStyle: TItemListSelectionStyle read FSelectionStyle
+      write SetSelectionStyle;
     property VerticalScrollBar: TVerticalScrollBarControl read FScrollBar;
     property OnSelectionChanged: TNotifyEvent read FOnSelectionChanged
       write FOnSelectionChanged;
@@ -148,6 +154,7 @@ begin
   FHotIndex := -1;
   FEditIndex := -1;
   FSelectionAnchor := -1;
+  FSelectionStyle := ilssRow;
   FSelectedIndices := TList<Integer>.Create;
   FRowHeight := ScaleValue(104);
   FImageSize := ScaleValue(96);
@@ -201,10 +208,12 @@ procedure TCustomItemListView.DrawItem(Index: Integer; const Bounds: TRect);
 var
   R, ImageBounds, TextBounds: TRect;
   Background, TextColor: TColor;
+  Selected: Boolean;
   TextFlags: Cardinal;
 begin
   R := Bounds;
-  if GetItemSelected(Index) then
+  Selected := GetItemSelected(Index);
+  if Selected and (FSelectionStyle = ilssRow) then
   begin
     Background := A2SCListViewSelection;
     TextColor := A2SCListViewSelectionText;
@@ -230,6 +239,8 @@ begin
 
   ImageBounds := ItemImageRect(Index);
   DrawItemImage(Index, ImageBounds, Canvas);
+  if Selected and (FSelectionStyle = ilssImageOverlay) then
+    DrawImageSelectionOverlay(ImageBounds);
 
   if FCaptionVisible then
   begin
@@ -250,6 +261,37 @@ begin
   Canvas.Pen.Color := A2SCToolBarBackground;
   Canvas.MoveTo(R.Left, R.Bottom - 1);
   Canvas.LineTo(R.Right, R.Bottom - 1);
+end;
+
+procedure TCustomItemListView.DrawImageSelectionOverlay(
+  const Bounds: TRect);
+var
+  Blend: BLENDFUNCTION;
+  Overlay: TBitmap;
+begin
+  if (Bounds.Right <= Bounds.Left) or (Bounds.Bottom <= Bounds.Top) then
+    Exit;
+  Overlay := TBitmap.Create;
+  try
+    Overlay.PixelFormat := pf32bit;
+    Overlay.SetSize(Bounds.Width, Bounds.Height);
+    Overlay.Canvas.Brush.Color := RGB(70, 120, 220);
+    Overlay.Canvas.FillRect(Rect(0, 0, Overlay.Width, Overlay.Height));
+    Blend.BlendOp := AC_SRC_OVER;
+    Blend.BlendFlags := 0;
+    Blend.SourceConstantAlpha := 72;
+    Blend.AlphaFormat := 0;
+    AlphaBlend(Canvas.Handle, Bounds.Left, Bounds.Top, Bounds.Width,
+      Bounds.Height, Overlay.Canvas.Handle, 0, 0, Overlay.Width,
+      Overlay.Height, Blend);
+  finally
+    Overlay.Free;
+  end;
+  Canvas.Brush.Style := bsClear;
+  Canvas.Pen.Color := RGB(110, 160, 255);
+  Canvas.Pen.Width := 1;
+  Canvas.Rectangle(Bounds);
+  Canvas.Brush.Style := bsSolid;
 end;
 
 function TCustomItemListView.GetItemSelected(Index: Integer): Boolean;
@@ -503,6 +545,14 @@ begin
   // 親全体を無効化すると、子の独自スクロールバーまで同時に再描画され、
   // ドラッグ中につまみがちらつく。行表示領域だけを更新する。
   InvalidateContent;
+end;
+
+procedure TCustomItemListView.SetSelectionStyle(
+  const Value: TItemListSelectionStyle);
+begin
+  if FSelectionStyle = Value then Exit;
+  FSelectionStyle := Value;
+  Invalidate;
 end;
 
 procedure TCustomItemListView.InvalidateContent;
