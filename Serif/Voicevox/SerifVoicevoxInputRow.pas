@@ -6,7 +6,7 @@ interface
 uses
   Winapi.Windows, System.Types, System.SysUtils, System.Classes, System.Math, Vcl.Controls,
   Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Graphics, Vcl.Forms,
-  SerifCharaIconRenderer;
+  SerifCharaIconRenderer, DarkMemo;
 
 type
   TSerifVoicevoxInputRow = class;
@@ -24,7 +24,7 @@ type
     FIconRenderer: TSerifCharaIconRenderer;
     FAccentQueryJson: string;
     FLabelText: TLabel;
-    FMemo: TMemo;
+    FMemo: TDarkMemo;
     FOnBeforeEdit: TSerifVoicevoxRowEvent;
     FOnDelete: TSerifVoicevoxRowDeleteEvent;
     FOnEditFinished: TSerifVoicevoxRowEvent;
@@ -181,13 +181,11 @@ begin
   FLabelText.WordWrap := True;
   FLabelText.OnClick := LabelClick;
 
-  FMemo := TMemo.Create(Self);
+  FMemo := TDarkMemo.Create(Self);
   FMemo.Parent := FPanelText;
   FMemo.Align := alClient;
   FMemo.BorderStyle := bsNone;
-  FMemo.Color := A2SCEditBackground;
-  FMemo.Font.Color := A2SCEditText;
-  FMemo.Font.Height := -11;
+  FMemo.DesignFontHeight := 11;
   FMemo.ScrollBars := ssNone;
   FMemo.WantReturns := True;
   FMemo.WordWrap := True;

@@ -13,8 +13,8 @@ procedure DrawSerifAliasThumbnail(const FileName, FallbackName: string; Bitmap: 
 implementation
 
 uses
-  System.Types, System.Math, System.Generics.Collections,
-  ALiasList;
+  System.Types, System.Math, System.Classes, System.Generics.Collections,
+  TextEncodingUtils;
 
 type
   TSerifAliasOutlineStyle = record
@@ -157,13 +157,51 @@ end;
 // .object から文字装飾に必要な最小限の情報を取り出す。
 function ExtractPreviewStyle(const FileName: string; out Style: TSerifAliasPreviewStyle): Boolean;
 var
-  Alias: TALiasList;
-  ItemIndex: Integer;
-  SectionIndex: Integer;
-  Section: TAliasSectionItem;
+  Lines: TStringList;
+  Values: TStringList;
+  Line: string;
+  Key: string;
+  Value: string;
+  SeparatorPos: Integer;
+  LineIndex: Integer;
   EffectName: string;
   OutlineList: TList<TSerifAliasOutlineStyle>;
   Outline: TSerifAliasOutlineStyle;
+
+  procedure ApplySection;
+  begin
+    EffectName := NormalizeValue(Values.Values['effect.name']);
+    if SameText(EffectName, 'テキスト') then
+    begin
+      Style.FontName := NormalizeValue(Values.Values['フォント']);
+      if Style.FontName = '' then
+        Style.FontName := DEFAULT_FONT_NAME;
+      Style.FontSize := ParseFloatText(Values.Values['サイズ'],
+        Style.FontSize);
+      Style.FontColor := ParseColorText(Values.Values['文字色'],
+        Style.FontColor);
+      Style.Bold := ParseIntText(Values.Values['B'], 0) <> 0;
+      Style.Italic := ParseIntText(Values.Values['I'], 0) <> 0;
+      Result := True;
+    end
+    else if SameText(EffectName, '縁取り') then
+    begin
+      Outline.Size := Max(1, ParseIntText(Values.Values['サイズ'], 1));
+      Outline.Blur := Max(0, ParseIntText(Values.Values['ぼかし'], 0));
+      Outline.Color := ParseColorText(Values.Values['縁色'], clBlack);
+      OutlineList.Add(Outline);
+    end
+    else if SameText(EffectName, 'ドロップシャドウ') then
+    begin
+      Style.Shadow.Enabled := True;
+      Style.Shadow.OffsetX := ParseIntText(Values.Values['X'], 0);
+      Style.Shadow.OffsetY := ParseIntText(Values.Values['Y'], 0);
+      Style.Shadow.Blur := Max(0, ParseIntText(Values.Values['拡散'], 0));
+      Style.Shadow.Density := EnsureRange(ParseFloatText(
+        Values.Values['濃さ'], 40.0), 0.0, 100.0);
+      Style.Shadow.Color := ParseColorText(Values.Values['影色'], clBlack);
+    end;
+  end;
 begin
   Result := False;
 
@@ -183,62 +221,36 @@ begin
   if not FileExists(FileName) then
     Exit;
 
-  Alias := TALiasList.Create;
+  Lines := TStringList.Create;
+  Values := TStringList.Create;
+  OutlineList := TList<TSerifAliasOutlineStyle>.Create;
   try
-    Alias.LoadFromAlias(FileName);
-    if Alias.Count = 0 then
-      Exit;
-
-    OutlineList := TList<TSerifAliasOutlineStyle>.Create;
-    try
-      for ItemIndex := 0 to Alias.Count - 1 do
+    Values.NameValueSeparator := '=';
+    Lines.Text := LoadTextAutoEncoding(FileName);
+    for LineIndex := 0 to Lines.Count do
+    begin
+      if LineIndex < Lines.Count then
+        Line := Trim(Lines[LineIndex])
+      else
+        Line := '[end]';
+      if (Line <> '') and (Line[1] = '[') and
+        (Line[Length(Line)] = ']') then
       begin
-        for SectionIndex := 0 to Alias[ItemIndex].Sections.Count - 1 do
-        begin
-          Section := Alias[ItemIndex].Sections[SectionIndex];
-          EffectName := NormalizeValue(Section.Values['effect.name']);
-
-          if SameText(EffectName, 'テキスト') then
-          begin
-            Style.FontName := NormalizeValue(Section.Values['フォント']);
-            if Style.FontName = '' then
-              Style.FontName := DEFAULT_FONT_NAME;
-
-            Style.FontSize := ParseFloatText(Section.Values['サイズ'], Style.FontSize);
-            Style.FontColor := ParseColorText(Section.Values['文字色'], Style.FontColor);
-            Style.Bold := ParseIntText(Section.Values['B'], 0) <> 0;
-            Style.Italic := ParseIntText(Section.Values['I'], 0) <> 0;
-            Result := True;
-            Continue;
-          end;
-
-          if SameText(EffectName, '縁取り') then
-          begin
-            Outline.Size := Max(1, ParseIntText(Section.Values['サイズ'], 1));
-            Outline.Blur := Max(0, ParseIntText(Section.Values['ぼかし'], 0));
-            Outline.Color := ParseColorText(Section.Values['縁色'], clBlack);
-            OutlineList.Add(Outline);
-            Continue;
-          end;
-
-          if SameText(EffectName, 'ドロップシャドウ') then
-          begin
-            Style.Shadow.Enabled := True;
-            Style.Shadow.OffsetX := ParseIntText(Section.Values['X'], 0);
-            Style.Shadow.OffsetY := ParseIntText(Section.Values['Y'], 0);
-            Style.Shadow.Blur := Max(0, ParseIntText(Section.Values['拡散'], 0));
-            Style.Shadow.Density := EnsureRange(ParseFloatText(Section.Values['濃さ'], 40.0), 0.0, 100.0);
-            Style.Shadow.Color := ParseColorText(Section.Values['影色'], clBlack);
-          end;
-        end;
+        if Values.Count > 0 then ApplySection;
+        Values.Clear;
+        Continue;
       end;
-
-      Style.Outlines := OutlineList.ToArray;
-    finally
-      OutlineList.Free;
+      SeparatorPos := Pos('=', Line);
+      if SeparatorPos <= 0 then Continue;
+      Key := Trim(Copy(Line, 1, SeparatorPos - 1));
+      Value := Copy(Line, SeparatorPos + 1, MaxInt);
+      Values.Values[Key] := Value;
     end;
+    Style.Outlines := OutlineList.ToArray;
   finally
-    Alias.Free;
+    OutlineList.Free;
+    Values.Free;
+    Lines.Free;
   end;
 end;
 

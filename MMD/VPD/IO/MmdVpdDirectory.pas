@@ -4,9 +4,6 @@ unit MmdVpdDirectory;
 
 interface
 
-const
-  MMD_VPD_DIRECTORY = 'D:\Users\take6\MMDAnimationStudio\VPD';
-
 // テストや将来の保存先切替でも同じ検証を使えるよう、任意パス版を公開する。
 function EnsureMmdVpdDirectoryAt(const DirectoryPath: string): string;
 function EnsureMmdVpdDirectory: string;
@@ -34,7 +31,8 @@ end;
 
 function EnsureMmdVpdDirectory: string;
 begin
-  Result := EnsureMmdVpdDirectoryAt(MMD_VPD_DIRECTORY);
+  Result := EnsureMmdVpdDirectoryAt(TPath.Combine(
+    TPath.Combine(TPath.GetDocumentsPath, 'MMDAnimationStudio'), 'VPD'));
 end;
 
 end.

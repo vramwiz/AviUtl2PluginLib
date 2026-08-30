@@ -11,11 +11,13 @@ object FrameSerifMonitor: TFrameSerifMonitor
     Height = 25
     Align = alLeft
     Caption = #38283#22987
+    Font.Height = -13
+    ParentFont = False
     PopupMenu = MenuPop
     TabOrder = 0
     OnClick = btnStartStopClick
   end
-  object PanelBase: TPanel
+  object PanelBase: TDarkPanel
     Left = 57
     Top = 0
     Width = 143
@@ -24,13 +26,12 @@ object FrameSerifMonitor: TFrameSerifMonitor
     BevelOuter = bvNone
     ParentBackground = False
     TabOrder = 1
-    object LabelStatus: TLabel
+    object LabelStatus: TDarkLabel
       Left = 6
       Top = 3
       Width = 26
       Height = 15
       Caption = #20572#27490
-      Transparent = False
     end
   end
   object MenuPop: TPopupMenu

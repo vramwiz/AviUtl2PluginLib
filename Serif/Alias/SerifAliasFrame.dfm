@@ -21,7 +21,7 @@ object FrameSerifAlias: TFrameSerifAlias
     Height = 72
     Align = alBottom
     TabOrder = 1
-    object LBoxLayer: TListBox
+    object LBoxLayer: TDarkListBox
       Left = 1
       Top = 1
       Width = 638

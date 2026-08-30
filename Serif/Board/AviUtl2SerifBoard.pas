@@ -2,52 +2,34 @@ unit AviUtl2SerifBoard;
 
 interface
 
-// ƒsƒAƒmƒ[ƒ‹ƒGƒŠƒAƒX¶¬
-function AviUtl2SerifBoardSend(
-                              Layer : Integer;                // ¶¬‚·‚éƒŒƒCƒ„[ 0`
-                              FileName : string;              // ‰æ‘œƒtƒ@ƒCƒ‹–¼
-                              Enable : Boolean;               // True:ƒZƒŠƒt‚É˜A“®‚µ‚Ä•\Ž¦
-                              RefLayer : Integer;             // ŽQÆ‚·‚éƒŒƒCƒ„[
-                              Hold : Integer;                 // •\Ž¦ˆÛŽƒtƒŒ[ƒ€
-                              Fade : Integer;                 // ƒtƒF[ƒhƒtƒŒ[ƒ€
-                              Send : Boolean                  // True:‘—M False;D&D—p
-                            ) : string;                       // D&D‚Å•Ô‚·ƒtƒ@ƒCƒ‹–¼
-
+// ã‚»ãƒªãƒ•ãƒœãƒ¼ãƒ‰ç”»åƒã®D&Dç”¨ã‚¨ã‚¤ãƒªã‚¢ã‚¹ã‚’ç”Ÿæˆã™ã‚‹ã€‚
+// Layerã¨Sendã¯å¾“æ¥APIäº’æ›ã®ãŸã‚ä¿æŒã—ã€æ—¢å­˜ã©ãŠã‚Šç”Ÿæˆå€¤ã«ã¯ä½¿ç”¨ã—ãªã„ã€‚
+function AviUtl2SerifBoardSend(Layer: Integer; FileName: string;
+  Enable: Boolean; RefLayer, Hold, Fade: Integer; Send: Boolean): string;
 
 implementation
 
-uses AliasManager,AviUtl2TimeConvert,AliasManagerObjectPicture,SoundFileUtils;
+uses
+  AviUtl2TimeConvert,
+  SerifAviUtlAliasProvider;
 
-function AviUtl2SerifBoardSend(Layer : Integer;FileName : string;Enable : Boolean;RefLayer, Hold, Fade : Integer;Send : Boolean  ) : string;
+function AviUtl2SerifBoardSend(Layer: Integer; FileName: string;
+  Enable: Boolean; RefLayer, Hold, Fade: Integer; Send: Boolean): string;
 var
-  len,ms : Integer;
-  Convert : Double;
-  Item : TAliasManagerObjectPictureFile;
+  AliasData: TSerifAviUtlBoardAliasData;
+  Convert: Double;
 begin
-  Result := '';
-
-  Convert := AviUtl2Convert();
-  GAliasManager.ObjectName := '';
-  GAliasManager.Clear;
-
-  ms := 0;
-  len := 3;
-  Item := GAliasManager.AddPictureFile();
-  Item.Layer := 0;
-
-  Item.PictureFileName := FileName;
-  Item.EnableScript    := Enable;
-  Item.RefLayer := RefLayer;
-  Item.Hold := Hold;
-  Item.Fade := Fade;
-
-  Item.FrameStart := Round(ms / Convert);
-  Item.FrameLength := Round(len / Convert);
-
-
-  GAliasManager.SaveToAlias();
-  Result := GAliasManager.FileName;
+  Convert := AviUtl2Convert;
+  AliasData := Default(TSerifAviUtlBoardAliasData);
+  AliasData.FileName := FileName;
+  AliasData.EnableScript := Enable;
+  AliasData.RefLayer := RefLayer;
+  AliasData.Hold := Hold;
+  AliasData.Fade := Fade;
+  AliasData.Layer := 0;
+  AliasData.FrameStart := 0;
+  AliasData.FrameLength := Round(3 / Convert);
+  Result := CreateSerifAviUtlBoardAlias(AliasData);
 end;
-
 
 end.

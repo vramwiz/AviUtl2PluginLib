@@ -85,6 +85,24 @@
 ## 主なユニット
 
 - `SerifFrame.pas`: セリフ画面全体、プロジェクト・シーン同期、監視処理の入口。
+- `Watcher/Settings/SerifWatcherSettings.pas`: 監視フォルダーの製品共通INI読書きと、空のプロジェクト設定への補完。
+- `AviUtl/Selection/SerifAviUtlSelection.pas`: Syncroh2形式セリフ入力の選択、再解決、セリフと対応音声の再編集。
+- `AviUtl/Alias/SerifAviUtlDragAlias.pas`: セリフ表示のD&Dエイリアス生成、選択エイリアス検証、一時ファイル所有。
+- `AviUtl/Send/SerifAviUtlSender.pas`: セリフ／音声オブジェクト生成、通常・連続送信、連続送信位置の状態所有。
+- `AviUtl/Timeline/SerifAviUtlTimeline.pas`: Syncroh2形式セリフの値取得・更新・UID照合・移動・削除。
+- `Voicevox/Registration/SerifVoicevoxRegistration.pas`: VOICEVOX一時生成物の解析、F2再編集、新規配置、未送信登録、後始末。
+- `Project/Session/SerifProjectSession.pas`: Scene／Charas／Watchers／Configのプロジェクト単位の読込・保存・クローズ。
+- `Project/AviUtl/SerifProjectAviUtlSync.pas`: AviUtl2のセリフフォルダー関連付けと現在シーン同期の調停。
+- `Project/Lifecycle/SerifProjectLifecycle.pas`: 自動プロジェクトフォルダー準備、一覧登録、一時プロジェクト昇格。
+- `UI/Composition/SerifUiComposition.pas`: 子フレーム生成、親子接続、配置、イベント配線。
+- `UI/Navigation/SerifUiNavigation.pas`: ページツールバー構築、ページ別データ表示、操作ヒント。
+- `Watcher/State/SerifWatcherController.pas`: 監視状態の正規化、開始停止、自動送信、共通設定保存の調停。
+- `Runtime/Context/SerifRuntimeContext.pas`: プロジェクト、シーン、配役、監視、解析、設定、メッセージ、シナリオデータの生成・保存・破棄を一括所有する非表示Context。
+- `Runtime/Controller/SerifRuntimeController.pas`: 配役名反映、設定・シーン保存、監視解析、VOICEVOX登録後保存をUI非依存で調停するController。
+- `Host/Bootstrap/SerifHostBootstrap.pas`: 保存ルートと製品別Profile／Providerを検証し、親接続・カーソル通知設定済みの共有フレームを生成するホスト入口。
+- `AviUtl/Adapter/Core/SerifAviUtlProfile.pas`: 製品別のエフェクト名、項目名、プロジェクトキーを保持する登録式プロファイル。
+- `AviUtl/Adapter/Core/SerifAviUtlAliasProvider.pas`: 製品固有クラスを公開せず、セリフ／音声バッチ、新旧表示、セリフボード画像のエイリアス生成を委譲する登録式Provider。
+- `AviUtl/Adapter/Syncroh2/SerifAviUtlSyncroh2Adapter.pas`: 既存Syncroh2形式をプロファイルへ登録する製品実装。
 - `Voicevox/SerifVoicevoxSimpleInputView.pas`: 話者、再生、本文入力、キー操作。
 - `Voicevox/SerifVoicevoxSimpleInputFrame.pas`: 入力画面統括、設定、話者、送信イベント。
 - `Voicevox/SerifVoicevoxEngineSession.pas`: Engineの遅延起動、準備、終了。
@@ -110,6 +128,9 @@
 
 ## 継続課題
 
+- `AviUtl2Serif.pas`は互換API窓口として維持する。選択・タイムライン・プロジェクト同期・エイリアス検証は登録プロファイル、セリフ／音声バッチと新旧表示の生成は登録Providerへ移行済み。`SerifAviUtlSender`はAliasManagerを直接参照しない。
+- `AviUtl2SerifBoard.pas`は従来公開APIを維持し、画像オブジェクト生成を登録Providerへ委譲する。共有SerifでAliasManagerを直接参照するのはSyncroh2アダプターだけとする。
+- `SerifFrame.pas`の非表示データ所有は`SerifRuntimeContext`、イベント内のデータ変更・保存は`SerifRuntimeController`へ移行済み。保存ルート、AviUtl2 Profile／Alias Provider、カーソル通知は`SerifHostBootstrap`で検証・接続する。MMDAnimationStudio製品Profile／Providerは製品側へ追加済みで、次は同製品の`PanelSerif`からHost Bootstrapを呼ぶ。
 - 常時アニメーションを感情表現中心に整理し、Moduleから受信済みの`emote`を利用する。
 - 同期アニメーションを、実証済みの相対フレーム・総フレーム・行ピクセル経路から拡張する。
 - 表示後アニメーション用の旧セリフ一時バッファと、連続セリフ時の破棄規則を設計する。

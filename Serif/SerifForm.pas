@@ -29,7 +29,8 @@ var
 
 implementation
 
-uses  AppFolderUtils, System.IOUtils, BootManager;
+uses  AppFolderUtils, System.IOUtils, BootManager, SerifAviUtlProfile,
+      SerifHostBootstrap;
 
 var
   IsRequestClose : Boolean;
@@ -37,14 +38,20 @@ var
 {$R *.dfm}
 
 procedure TFormSerif.FormCreate(Sender: TObject);
+var
+  HostConfig: TSerifHostConfig;
+  Profile: TSerifAviUtlProfile;
 begin
 
   FBound := TRTTIFormBounds.Create;
   FBound.Filename  := GetAppFolder('Serif') +  'SerifWindow.ini';       // Windows状態保存ファイル名設定
 
-  FFrameSerif := TFrameSerif.Create(Self);
-  FFrameSerif.Parent := Self;
-  FFrameSerif.Align := alClient;
+  Profile := CurrentSerifAviUtlProfile;
+  HostConfig := Default(TSerifHostConfig);
+  HostConfig.ProductID := Profile.ProductID;
+  HostConfig.AppFolderName := Profile.ProductID;
+  HostConfig.Parent := Self;
+  FFrameSerif := CreateHostedSerifFrame(Self, HostConfig);
 end;
 
 procedure TFormSerif.FormDestroy(Sender: TObject);

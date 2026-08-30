@@ -14,6 +14,7 @@ uses
   Vcl.ImgList,
   Vcl.StdCtrls,
   Vcl.ToolWin,
+  DarkPanel,
   MmdD3DViewport,
   MmdMorphPreviewPanel;
 
@@ -25,8 +26,8 @@ type
     FCommandDisabledImages: TImageList;
     FCommandImages: TImageList;
     FCommandToolbar: TToolBar;
-    FDialogButtonPanel: TPanel;
-    FLeftPanel: TPanel;
+    FDialogButtonPanel: TDarkPanel;
+    FLeftPanel: TDarkPanel;
     FMorphPreview: TMmdMorphPreviewPanel;
     FRedoButton: TToolButton;
     FResetAllButton: TToolButton;
@@ -55,7 +56,20 @@ uses
   System.Math,
   Vcl.Graphics,
   MmdPoseEditorTheme,
+  MmdPoseEditorButtonTheme,
+  MmdPoseEditorListTheme,
   MmdPoseEditorToolbarIcons;
+
+type
+  // TControl.Fontはprotectedのため、DPI変換前後の高さを共通に扱う。
+  TControlAccess = class(TControl);
+
+  TControlFontSnapshot = record
+    Control: TControl;
+    Height: Integer;
+  end;
+
+  TControlFontSnapshots = TArray<TControlFontSnapshot>;
 
 const
   ToolbarBackground = MmdEditorPanel;
@@ -123,11 +137,42 @@ end;
 
 procedure TMmdPoseEditorFormBase.ScaleLayoutForPPI(TargetPPI: Integer);
 var
-  InitialFontHeight: Integer;
+  FontSnapshots: TControlFontSnapshots;
+  I: Integer;
+
+  procedure CaptureFonts(Control: TControl);
+  var
+    ChildIndex, SnapshotIndex: Integer;
+    ParentControl: TWinControl;
+  begin
+    SnapshotIndex := Length(FontSnapshots);
+    SetLength(FontSnapshots, SnapshotIndex + 1);
+    FontSnapshots[SnapshotIndex].Control := Control;
+    FontSnapshots[SnapshotIndex].Height := TControlAccess(Control).Font.Height;
+    if Control is TWinControl then
+    begin
+      ParentControl := TWinControl(Control);
+      for ChildIndex := 0 to ParentControl.ControlCount - 1 do
+        CaptureFonts(ParentControl.Controls[ChildIndex]);
+    end;
+  end;
 begin
-  InitialFontHeight := Font.Height;
+  if TargetPPI <= 0 then
+    TargetPPI := 96;
+  CaptureFonts(Self);
+
+  // CreateNew直後の各Control.Fontは既にWindowsの現在DPI向けである。
+  // そのままScaleForPPIすると子コントロールの文字まで再度拡大されるため、
+  // 一旦96 DPI相当へ戻してから配置と一緒に変換する。
+  for I := 0 to High(FontSnapshots) do
+    TControlAccess(FontSnapshots[I].Control).Font.Height := MulDiv(
+      FontSnapshots[I].Height, 96, TargetPPI);
   ScaleForPPI(TargetPPI);
-  Font.Height := InitialFontHeight;
+  // 丸め誤差を含め、作成時にWindowsが選んだ正しいフォント高へ揃える。
+  for I := 0 to High(FontSnapshots) do
+    TControlAccess(FontSnapshots[I].Control).Font.Height :=
+      FontSnapshots[I].Height;
+  FMorphPreview.MatchParentFont;
   BuildMmdPoseEditorToolbarIcons(FCommandImages,
     MulDiv(20, TargetPPI, 96), ToolbarForeground, ToolbarAccent);
   BuildMmdPoseEditorToolbarIcons(FCommandDisabledImages,
@@ -208,7 +253,7 @@ begin
   FAutoFitButton.Enabled := False;
 
   // 数値ボーン編集パネルは持たない。確定操作だけを独立した下端バーに置く。
-  FDialogButtonPanel := TPanel.Create(Self);
+  FDialogButtonPanel := TDarkPanel.Create(Self);
   FDialogButtonPanel.Parent := Self;
   FDialogButtonPanel.Align := alBottom;
   FDialogButtonPanel.Height := 55;
@@ -230,7 +275,7 @@ begin
   CancelButton.SetBounds(FDialogButtonPanel.ClientWidth - 111, 10, 95, 32);
   CancelButton.Anchors := [akTop, akRight];
 
-  FLeftPanel := TPanel.Create(Self);
+  FLeftPanel := TDarkPanel.Create(Self);
   FLeftPanel.Parent := Self;
   FLeftPanel.Align := alLeft;
   FLeftPanel.Width := 245;

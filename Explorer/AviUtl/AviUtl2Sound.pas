@@ -3,71 +3,108 @@ unit AviUtl2Sound;
 interface
 
 uses
-  ExplorerListSound,AliasManagerPositionList;
+  ExplorerListSound;
 
-function AviUtl2SoundDandD(Sound : TExplorerFileSoundItem): string;
+function AviUtl2SoundDandD(Sound: TExplorerFileSoundItem): string;
 
 implementation
 
-uses AliasManager,AviUtl2TimeConvert,AliasManagerObjectSound,SoundFileUtils,Math;
+uses
+  System.Math,
+  System.SysUtils,
+  AppFolderUtils,
+  ExplorerAliasBuilder,
+  ExplorerAviUtlBridge,
+  SoundFileUtils;
 
+const
+  TextSoundFile = #$97F3#$58F0#$30D5#$30A1#$30A4#$30EB;
+  TextPlaybackPosition = #$518D#$751F#$4F4D#$7F6E;
+  TextPlaybackRange = #$518D#$751F#$7BC4#$56F2;
+  TextPlaybackSpeed = #$518D#$751F#$901F#$5EA6;
+  TextFile = #$30D5#$30A1#$30A4#$30EB;
+  TextTrack = #$30C8#$30E9#$30C3#$30AF;
+  TextLoopPlayback = #$30EB#$30FC#$30D7#$518D#$751F;
+  TextSoundPlayback = #$97F3#$58F0#$518D#$751F;
+  TextLinearMove = #$76F4#$7DDA#$79FB#$52D5;
+  TextVolume = #$97F3#$91CF;
+  TextPan = #$5DE6#$53F3;
 
-function AviUtl2SoundDandD(Sound : TExplorerFileSoundItem): string;
+function FloatText(Value: Double; const NumberFormat: string): string;
 var
-  Convert         : Double;   // 1フレームの秒数
-  len, sec        : Double;   // 秒
-  FadeInSec       : Double;   // 秒へ変換したフェード時間
-  FadeOutSec      : Double;   // 秒へ変換したフェード時間
-  Item            : TAliasManagerObjectSound;
-  P               : TAliasManagerPositionItem;
+  FormatSettings: TFormatSettings;
 begin
-  Result := '';
-
-  Convert := AviUtl2Convert();               // frame → sec
-  GAliasManager.ObjectName := '';
-  GAliasManager.Clear;
-
-  sec := 0.0;
-  len := GetSoundFileLengthSec(Sound.FileName);   // ★ 秒で取得されている前提
-
-  // フェード値はミリ秒 → 秒へ変換（重要）
-  FadeInSec  := Sound.FadeIn  / 1;
-  FadeOutSec := Sound.FadeOut / 1;
-
-  {--------------------------------------
-    Sound オブジェクト作成
-  --------------------------------------}
-  Item := GAliasManager.AddSound(); // TAliasManagerObjectSound(GAliasManager.Add('Sound'));
-  Item.Sound       := Sound;
-  Item.Layer       := 0;
-  Item.FrameStart  := Round(sec / Convert);
-  Item.FrameLength := Ceil(len / Convert);     // 切り上げが自然
-
-  {--------------------------------------
-    フェードイン
-  --------------------------------------}
-  if (Sound.FadeMode = 1) or (Sound.FadeMode = 3) then
-  begin
-    P := Item.Positions.AddNew();
-    P.Frame := Round(FadeInSec / Convert);
-    if P.Frame > Item.FrameEnd then
-      P.Frame := Item.FrameEnd;
-  end;
-
-  {--------------------------------------
-    フェードアウト
-  --------------------------------------}
-  if (Sound.FadeMode = 2) or (Sound.FadeMode = 3) then
-  begin
-    P := Item.Positions.AddNew();
-    P.Frame := Round((len - FadeOutSec) / Convert);
-    if P.Frame < Item.FrameStart then
-      P.Frame := Item.FrameStart;
-  end;
-
-  GAliasManager.SaveToAlias();
-  Result := GAliasManager.FileName;
+  FormatSettings := TFormatSettings.Create;
+  FormatSettings.DecimalSeparator := '.';
+  Result := FormatFloat(NumberFormat, Value, FormatSettings);
 end;
 
+function AviUtl2SoundDandD(Sound: TExplorerFileSoundItem): string;
+var
+  AliasBuilder: TExplorerAliasBuilder;
+  Duration: Double;
+  FadeInFrame: Integer;
+  FadeOutFrame: Integer;
+  FrameDuration: Double;
+  FrameEnd: Integer;
+  Positions: TArray<Integer>;
+  VolumeValue: string;
+begin
+  Result := '';
+  if Sound = nil then
+    Exit;
+
+  Duration := GetSoundFileLengthSec(Sound.FileName);
+  FrameDuration := ExplorerFrameDuration;
+  FrameEnd := Ceil(Duration / FrameDuration);
+  SetLength(Positions, 0);
+  if Sound.FadeMode in [1, 3] then
+  begin
+    FadeInFrame := Min(Round(Sound.FadeIn / FrameDuration), FrameEnd);
+    SetLength(Positions, Length(Positions) + 1);
+    Positions[High(Positions)] := FadeInFrame;
+  end;
+  if Sound.FadeMode in [2, 3] then
+  begin
+    FadeOutFrame := Max(Round((Duration - Sound.FadeOut) /
+      FrameDuration), 0);
+    SetLength(Positions, Length(Positions) + 1);
+    Positions[High(Positions)] := FadeOutFrame;
+  end;
+
+  Result := GetAppFolder('Temp') + 'Temp.object';
+  AliasBuilder := TExplorerAliasBuilder.Create;
+  try
+    AliasBuilder.AddObject(0, 0, FrameEnd, Positions);
+    AliasBuilder.AddFilter(TextSoundFile);
+    AliasBuilder.AddValue(TextPlaybackPosition,
+      FloatText(0, '0.000') + ',' + FloatText(Duration, '0.000') + ',' +
+      TextPlaybackRange + ',0');
+    AliasBuilder.AddFloat(TextPlaybackSpeed, Sound.PlaySpeed, 2);
+    AliasBuilder.AddValue(TextFile, Sound.FileName);
+    AliasBuilder.AddValue(TextTrack, Sound.Track);
+    AliasBuilder.AddValue(TextLoopPlayback, Sound.PlayLoop);
+    AliasBuilder.AddFilter(TextSoundPlayback);
+    case Sound.FadeMode of
+      1: VolumeValue := FloatText(0, '0.000') + ',' +
+        FloatText(Sound.Volume, '0.000') + ',' +
+        FloatText(Sound.Volume, '0.000') + ',' + TextLinearMove + ',0';
+      2: VolumeValue := FloatText(Sound.Volume, '0.000') + ',' +
+        FloatText(Sound.Volume, '0.000') + ',' + FloatText(0, '0.000') +
+        ',' + TextLinearMove + ',0';
+      3: VolumeValue := FloatText(0, '0.000') + ',' +
+        FloatText(Sound.Volume, '0.000') + ',' +
+        FloatText(Sound.Volume, '0.000') + ',' + FloatText(0, '0.000') +
+        ',' + TextLinearMove + ',0';
+    else
+      VolumeValue := FloatText(Sound.Volume, '0.000');
+    end;
+    AliasBuilder.AddValue(TextVolume, VolumeValue);
+    AliasBuilder.AddFloat(TextPan, Sound.Pan, 2);
+    AliasBuilder.SaveToFile(Result);
+  finally
+    AliasBuilder.Free;
+  end;
+end;
 
 end.

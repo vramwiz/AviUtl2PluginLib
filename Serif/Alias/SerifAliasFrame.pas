@@ -8,7 +8,7 @@ uses
   StdCtrls,Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,ListBoxEdit,
   SerifCharaList,ListViewRTTI, Vcl.Menus,RTTIPersistentIni,ConfigPanel,DragAgent,
   SerifAliasList,RTTIPersistentFrame, System.ImageList, Vcl.ImgList,ToolbarButtons,
-  ShortcutAction;
+  ShortcutAction, DarkListBox;
 
 type
   TFrameSerifAliasBound = class(TRTTIFrame)
@@ -44,7 +44,7 @@ type
   TFrameSerifAlias = class(TFrame)
     PanelList: TPanel;
     PanelInfo: TPanel;
-    LBoxLayer: TListBox;
+    LBoxLayer: TDarkListBox;
     ImageList1: TImageList;
     MenuPop: TPopupMenu;
     MenuAdd: TMenuItem;
@@ -176,10 +176,8 @@ begin
   FShortcuts.Add(Ord('V'),[ssCtrl],ItemPaste);
   FShortcuts.Add(VK_F2,[],FListView.ItemEditName);
 
-  LBoxLayer.Color := A2SCListBoxBackground;
-  LBoxLayer.Font.Color := A2SCListBoxText;
-  LBoxLayer.Font.Height := -13;
-  LBoxLayer.ItemHeight := 22;
+  LBoxLayer.DesignFontHeight := 13;
+  LBoxLayer.DesignItemHeight := 22;
 
   FListView  := TSerifAliasListView.Create(Self);
   FListView.Parent := PanelList;

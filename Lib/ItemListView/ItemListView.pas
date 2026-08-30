@@ -147,6 +147,9 @@ begin
   inherited;
   ControlStyle := ControlStyle + [csOpaque, csDoubleClicks];
   DoubleBuffered := True;
+  BevelOuter := bvNone;
+  BevelKind := bkSoft;
+  BevelWidth := 1;
   TabStop := True;
   Color := A2SCListViewBackground;
   Font.Color := A2SCListViewText;
@@ -220,7 +223,7 @@ begin
   end
   else if Index = FHotIndex then
   begin
-    Background := A2SCToolBarHot;
+    Background := A2SCListViewHover;
     TextColor := A2SCListViewText;
   end
   else if Odd(Index) then
@@ -615,6 +618,7 @@ begin
   begin
     FEdit := TEdit.Create(Self);
     FEdit.Parent := Self;
+    FEdit.AutoSize := False;
     FEdit.Color := A2SCEditBackground;
     FEdit.Font.Color := A2SCEditText;
     FEdit.OnExit := EditExit;
@@ -622,8 +626,11 @@ begin
   end;
   FEditIndex := Index;
   R := ItemTextRect(Index);
-  InflateRect(R, -ScaleValue(2), -ScaleValue(2));
-  FEdit.SetBounds(R.Left, R.Top, Max(40, R.Width), R.Height);
+  InflateRect(R, -ScaleValue(2), 0);
+  R.Right := Min(R.Right, ClientWidth);
+  R.Bottom := Min(R.Bottom, ClientHeight);
+  FEdit.SetBounds(Max(0, R.Left), Max(0, R.Top), Max(1, R.Width),
+    Max(1, R.Height));
   FEdit.Text := GetItemText(Index);
   FEdit.Visible := True;
   FEdit.SelectAll;

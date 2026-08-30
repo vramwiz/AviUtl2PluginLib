@@ -73,7 +73,7 @@ type
     // 選択中エイリアスを複製する
     procedure ItemCopy;
     // 選択中エイリアスを削除する
-    procedure ItemDelete;
+    procedure ItemDelete; reintroduce;
     // キャッシュも含めて一覧表示を更新する
     procedure Refresh;
     // アイコン表示時に上詰めで再配置する

@@ -105,7 +105,7 @@ implementation
 
 uses  AppFolderUtils,ExplorerListPicture,
       ExplorerListNormal,ExplorerListSound,ExplorerListAlias,
-      AviUtl2PluginCore,AviUtl2StyleColors;
+      AviUtl2StyleColors;
 
 
 {$R *.dfm}

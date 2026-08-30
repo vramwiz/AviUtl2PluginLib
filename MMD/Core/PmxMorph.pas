@@ -19,6 +19,9 @@ function FindMorphIndex(const Model: TPmxModel; const MorphName: string): Intege
 // グループ・フリップ参照を再帰展開し、実際に適用するモーフ別係数へ変換する。
 procedure ResolveMorphWeights(const Model: TPmxModel; const Input: TPmxMorphWeights;
   var Effective: TPmxMorphWeights);
+// 入力またはグループ・フリップ展開先に、指定表示枠の有効モーフがあればTrueを返す。
+function MorphWeightsUsePanel(const Model: TPmxModel;
+  const Weights: TPmxMorphWeights; Panel: Byte): Boolean;
 // 係数を初期頂点位置と既存ローカル姿勢へ合成する。Model自体は変更しない。
 procedure ApplyMorphs(const Model: TPmxModel; const Weights: TPmxMorphWeights;
   var Poses: TPmxBonePoses; var Positions: TPmxVertexPositions);
@@ -83,6 +86,30 @@ begin
   SetLength(Stack, Length(Model.Morphs));
   for I := 0 to Min(High(Input), High(Model.Morphs)) do
     ExpandMorph(Model, I, Input[I], Stack, Effective);
+end;
+
+function MorphWeightsUsePanel(const Model: TPmxModel;
+  const Weights: TPmxMorphWeights; Panel: Byte): Boolean;
+var
+  Effective: TPmxMorphWeights;
+  I: Integer;
+begin
+  Result := False;
+  if Model = nil then
+    Exit;
+
+  // グループ自身の表示枠も分類として扱う。
+  for I := 0 to Min(High(Weights), High(Model.Morphs)) do
+    if (Abs(Weights[I]) > 0.000001) and
+      (Model.Morphs[I].Panel = Panel) then
+      Exit(True);
+
+  // 「その他」のグループから目・口モーフを参照する場合も占有扱いにする。
+  ResolveMorphWeights(Model, Weights, Effective);
+  for I := 0 to High(Effective) do
+    if (Abs(Effective[I]) > 0.000001) and
+      (Model.Morphs[I].Panel = Panel) then
+      Exit(True);
 end;
 
 function MorphQuaternion(const Value: TPmxVector4): TPmxQuaternion;

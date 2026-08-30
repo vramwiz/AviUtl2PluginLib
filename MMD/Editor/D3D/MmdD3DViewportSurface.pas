@@ -43,6 +43,12 @@ type
     destructor Destroy; override;
     // 保存対象外の確認用モーフ係数を設定し、モデル本体を再構築する。
     procedure SetMorphWeights(const AWeights: TPmxMorphWeights);
+    // 正面の既定表示へ戻す。
+    procedure ResetPreviewCamera;
+    // 指定ボーンを画面中央へ移し、指定倍率で表示する。
+    function FocusPreviewBone(const BoneName: string; Zoom: Single): Boolean;
+    // 頭を中央にし、無いモデルでは両目・左右目の中点・首へ退避する。
+    function FocusPreviewFace(Zoom: Single): Boolean;
     // 現在の表示寸法とカメラで、骨格を除いたモデル画像を取得する。
     function CaptureModelImage(Bitmap: Vcl.Graphics.TBitmap): Boolean;
     // 確認用途に応じてモデルと骨格オーバーレイの表示を切り替える。
@@ -56,6 +62,7 @@ implementation
 
 uses
   Winapi.Windows,
+  System.Math,
   System.SysUtils;
 
 constructor TMmdD3DViewportSurface.Create(AOwner: TComponent);
@@ -81,6 +88,104 @@ begin
   RebuildScene;
   // TrackBar操作中もWM_PAINT待ちにせず、変更済みGPUバッファを即時表示する。
   Update;
+end;
+
+procedure TMmdD3DViewportSurface.ResetPreviewCamera;
+begin
+  FCamera := DefaultPreviewCamera;
+  UpdateCamera;
+end;
+
+function TMmdD3DViewportSurface.FocusPreviewBone(const BoneName: string;
+  Zoom: Single): Boolean;
+var
+  Camera: TMmdPreviewCamera;
+  Joint: TMmdPreviewJoint;
+  Point: TPmxVector3;
+  Scene: TMmdPreviewScene;
+begin
+  Result := False;
+  if (FModel = nil) or (ClientWidth <= 0) or (ClientHeight <= 0) then
+    Exit;
+  BuildPreviewScene(FModel, FPoses, FMorphWeights, EmptyPreviewTarget,
+    EmptyPreviewTarget, Scene);
+  Camera := DefaultPreviewCamera;
+  for Joint in Scene.Joints do
+    if SameText(FModel.Bones[Joint.BoneIndex].Name, BoneName) then
+    begin
+      Point := ProjectPreviewPosition(Joint.Position, Scene.Projection,
+        Camera, ClientWidth, ClientHeight);
+      Camera.Zoom := EnsureRange(Zoom, 0.2, 5.0);
+      Camera.PanX := -Point.X * Camera.Zoom * ClientWidth * 0.5;
+      Camera.PanY := Point.Y * Camera.Zoom * ClientHeight * 0.5;
+      FCamera := Camera;
+      UpdateCamera;
+      Exit(True);
+    end;
+end;
+
+function TMmdD3DViewportSurface.FocusPreviewFace(Zoom: Single): Boolean;
+var
+  Camera: TMmdPreviewCamera;
+  HasLeftEye, HasRightEye: Boolean;
+  Joint: TMmdPreviewJoint;
+  LeftEye, Point, RightEye: TPmxVector3;
+  Scene: TMmdPreviewScene;
+
+  function IsBone(const Name: string): Boolean;
+  begin
+    Result := SameText(FModel.Bones[Joint.BoneIndex].Name, Name);
+  end;
+
+  procedure ApplyPoint(const Position: TPmxVector3);
+  begin
+    Camera := DefaultPreviewCamera;
+    Point := ProjectPreviewPosition(Position, Scene.Projection, Camera,
+      ClientWidth, ClientHeight);
+    Camera.Zoom := EnsureRange(Zoom, 0.2, 5.0);
+    Camera.PanX := -Point.X * Camera.Zoom * ClientWidth * 0.5;
+    Camera.PanY := Point.Y * Camera.Zoom * ClientHeight * 0.5;
+    FCamera := Camera;
+    UpdateCamera;
+  end;
+
+begin
+  Result := False;
+  if (FModel = nil) or (ClientWidth <= 0) or (ClientHeight <= 0) then Exit;
+  BuildPreviewScene(FModel, FPoses, FMorphWeights, EmptyPreviewTarget,
+    EmptyPreviewTarget, Scene);
+  HasLeftEye := False;
+  HasRightEye := False;
+  for Joint in Scene.Joints do
+    if IsBone(#$982D) then
+    begin
+      ApplyPoint(Joint.Position);
+      Exit(True);
+    end
+    else if IsBone(#$4E21#$76EE) then
+    begin
+      ApplyPoint(Joint.Position);
+      Exit(True);
+    end
+    else if IsBone(#$5DE6#$76EE) then
+    begin
+      LeftEye := Joint.Position;
+      HasLeftEye := True;
+    end
+    else if IsBone(#$53F3#$76EE) then
+    begin
+      RightEye := Joint.Position;
+      HasRightEye := True;
+    end;
+  if HasLeftEye and HasRightEye then
+  begin
+    Point.X := (LeftEye.X + RightEye.X) * 0.5;
+    Point.Y := (LeftEye.Y + RightEye.Y) * 0.5;
+    Point.Z := (LeftEye.Z + RightEye.Z) * 0.5;
+    ApplyPoint(Point);
+    Exit(True);
+  end;
+  Result := FocusPreviewBone(#$9996, Zoom);
 end;
 
 function TMmdD3DViewportSurface.CaptureModelImage(

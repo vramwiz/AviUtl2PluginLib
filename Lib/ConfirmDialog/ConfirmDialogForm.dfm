@@ -16,7 +16,7 @@ object FormConfirmDialog: TFormConfirmDialog
   OnResize = FormResize
   OnShow = FormShow
   TextHeight = 15
-  object PanelCaption: TPanel
+  object PanelCaption: TDarkPanel
     Left = 0
     Top = 0
     Width = 199
@@ -25,7 +25,7 @@ object FormConfirmDialog: TFormConfirmDialog
     BevelOuter = bvNone
     TabOrder = 0
   end
-  object Panel1: TPanel
+  object Panel1: TDarkPanel
     Left = 0
     Top = 35
     Width = 199

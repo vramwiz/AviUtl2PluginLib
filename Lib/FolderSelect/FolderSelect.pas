@@ -31,7 +31,8 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ComCtrls,Vcl.ExtCtrls,
-  ShellApi,ShlObj,CommCtrl,System.Win.ComObj,Types,IOUtils,Winapi.ActiveX;
+  ShellApi,ShlObj,CommCtrl,System.Win.ComObj,Types,IOUtils,Winapi.ActiveX,
+  DarkTreeView;
 
 type
   TFolderSelectItem = class(TPersistent)
@@ -155,7 +156,7 @@ begin
   FLastSelectedNode := nil;
   FBuildingTree := False;
 
-  FTreeDir := TTreeView.Create(Self);
+  FTreeDir := TDarkTreeView.Create(Self);
   FTreeDir.Parent := Self;
   FTreeDir.Align := alClient;
   FTreeDir.HideSelection := False;

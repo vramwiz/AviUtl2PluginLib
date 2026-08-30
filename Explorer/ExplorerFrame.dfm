@@ -22,7 +22,7 @@ object FrameExplorer: TFrameExplorer
     Align = alTop
     ExplicitTop = 129
   end
-  object PanelConfig: TPanel
+  object PanelConfig: TDarkPanel
     Left = 0
     Top = 388
     Width = 640
@@ -32,7 +32,7 @@ object FrameExplorer: TFrameExplorer
     TabOrder = 0
     Visible = False
   end
-  object PanelExplorer: TPanel
+  object PanelExplorer: TDarkPanel
     Left = 0
     Top = 157
     Width = 640
@@ -40,7 +40,7 @@ object FrameExplorer: TFrameExplorer
     Align = alClient
     TabOrder = 1
   end
-  object PanelTool: TPanel
+  object PanelTool: TDarkPanel
     Left = 0
     Top = 0
     Width = 640
@@ -83,14 +83,14 @@ object FrameExplorer: TFrameExplorer
       end
     end
   end
-  object PanelEdit: TPanel
+  object PanelEdit: TDarkPanel
     Left = 0
     Top = 25
     Width = 640
     Height = 129
     Align = alTop
     TabOrder = 3
-    object PanelFavorite: TPanel
+    object PanelFavorite: TDarkPanel
       Left = 1
       Top = 130
       Width = 638
@@ -98,7 +98,7 @@ object FrameExplorer: TFrameExplorer
       Align = alTop
       TabOrder = 0
     end
-    object PanelTree: TPanel
+    object PanelTree: TDarkPanel
       Left = 1
       Top = 1
       Width = 638

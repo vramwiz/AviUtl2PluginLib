@@ -106,6 +106,7 @@ implementation
 
 uses
   Vcl.Forms,
+  AviUtl2StyleColors,
   LauncherShellUtils;
 
 const
@@ -113,16 +114,16 @@ const
   DEFAULT_ZOOM_INDEX = 2;
   LIST_FONT_HEIGHT = -12;
   LAUNCHER_RUNNING_STATE_TEXT_COLORS: array[TLauncherRunningState] of TColor = (
-    clWindowText, // lrsStopped
-    clYellow,      // lrsRunningNoWindow
-    clYellow,       // lrsRunningManaged
-    clYellow        // lrsRunningAdopted
+    A2SCLauncherStoppedText, // lrsStopped
+    A2SCLauncherRunningText, // lrsRunningNoWindow
+    A2SCLauncherRunningText, // lrsRunningManaged
+    A2SCLauncherRunningText  // lrsRunningAdopted
   );
   LAUNCHER_SPEECH_APP_RUNNING_STATE_TEXT_COLORS: array[TLauncherRunningState] of TColor = (
-    clWindowText, // lrsStopped
-    clLime,       // lrsRunningNoWindow
-    clAqua,       // lrsRunningManaged
-    clGreen        // lrsRunningAdopted
+    A2SCLauncherStoppedText,        // lrsStopped
+    A2SCLauncherRunningText,       // lrsRunningNoWindow
+    A2SCLauncherSpeechManagedText, // lrsRunningManaged
+    A2SCLauncherSpeechAdoptedText  // lrsRunningAdopted
   );
 
 { TLauncherListView }

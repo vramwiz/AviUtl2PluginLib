@@ -4,7 +4,7 @@ object FrameLauncherWizard: TFrameLauncherWizard
   Width = 365
   Height = 480
   TabOrder = 0
-  object Panel1: TPanel
+  object Panel1: TDarkPanel
     Left = 0
     Top = 456
     Width = 365

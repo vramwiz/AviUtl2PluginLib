@@ -5,6 +5,7 @@
 interface
 
 uses
+  System.UITypes,
   Vcl.Graphics,
   VectorRendererData;
 

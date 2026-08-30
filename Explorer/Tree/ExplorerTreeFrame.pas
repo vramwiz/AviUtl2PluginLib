@@ -5,7 +5,7 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,Vcl.ComCtrls,
-  Winapi.CommCtrl, Winapi.UxTheme, FolderSelect, System.ImageList, Vcl.ImgList,
+  FolderSelect, System.ImageList, Vcl.ImgList,
   ToolbarButtons;
 
 type
@@ -17,7 +17,6 @@ type
     FFolderTree : TFolderSelect;
     FOnFolderSelect: TNotifyEvent;
 
-    procedure ApplyTreeStyle;
     procedure ShowToolBar;
 
     procedure FolderNew;
@@ -77,45 +76,6 @@ begin
   inherited;
 end;
 
-procedure TFrameExplorerTree.ApplyTreeStyle;
-const
-  TREE_FONT_SIZE = 11;
-  TREE_ITEM_HEIGHT = 20;
-  TREE_INDENT = 16;
-var
-  Tree: TTreeView;
-  PPI: Integer;
-begin
-  Tree := FFolderTree.TreeDir;
-  if Tree = nil then
-    Exit;
-
-  PPI := Tree.CurrentPPI;
-  if PPI <= 0 then
-    PPI := Screen.PixelsPerInch;
-
-  Tree.Color := A2SCTreeViewBackground;
-  Tree.ParentFont := False;
-  Tree.Font.Color := A2SCTreeViewText;
-  Tree.Font.Size := TREE_FONT_SIZE;
-  Tree.BorderStyle := bsNone;
-  Tree.Indent := MulDiv(TREE_INDENT, PPI, 96);
-  Tree.ShowLines := True;
-  Tree.ShowRoot := True;
-  Tree.HideSelection := False;
-  Tree.RowSelect := True;
-
-  if Tree.HandleAllocated then
-  begin
-    SetWindowTheme(Tree.Handle, '', '');
-    SendMessage(Tree.Handle, WM_SETFONT, WPARAM(Tree.Font.Handle), LPARAM(1));
-    TreeView_SetBkColor(Tree.Handle, ColorToRGB(A2SCTreeViewBackground));
-    TreeView_SetTextColor(Tree.Handle, ColorToRGB(A2SCTreeViewText));
-    SendMessage(Tree.Handle, TVM_SETITEMHEIGHT, MulDiv(TREE_ITEM_HEIGHT, PPI, 96), 0);
-    SendMessage(Tree.Handle, TVM_SETLINECOLOR, 0, ColorToRGB(A2SCTreeViewLine));
-  end;
-end;
-
 function TFrameExplorerTree.GetSelectFolder: string;
 begin
   Result := FFolderTree.SelectFolder;
@@ -133,9 +93,7 @@ end;
 
 procedure TFrameExplorerTree.ShowFolder(const Folder : string);
 begin
-  ApplyTreeStyle;
   FFolderTree.ShowFolder(Folder);
-  ApplyTreeStyle;
   ShowToolBar;
   Show;
 end;

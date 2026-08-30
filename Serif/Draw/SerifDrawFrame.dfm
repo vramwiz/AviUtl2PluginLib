@@ -4,7 +4,7 @@ object FrameSerifDraw: TFrameSerifDraw
   Width = 640
   Height = 432
   TabOrder = 0
-  object PanelTitle: TPanel
+  object PanelTitle: TDarkPanel
     Left = 0
     Top = 0
     Width = 640
@@ -12,7 +12,7 @@ object FrameSerifDraw: TFrameSerifDraw
     Align = alTop
     BevelOuter = bvNone
     TabOrder = 0
-    object LabelTitle: TLabel
+    object LabelTitle: TDarkLabel
       Left = 8
       Top = 0
       Width = 632
@@ -24,7 +24,7 @@ object FrameSerifDraw: TFrameSerifDraw
       ExplicitHeight = 15
     end
   end
-  object PanelCommands: TPanel
+  object PanelCommands: TDarkPanel
     Left = 0
     Top = 28
     Width = 640

@@ -63,6 +63,7 @@ type
     procedure FolderOpen;
     function GetItemStyle: Integer;
 
+    property ListBox: TListBoxExplorerHist read FListBox;
     property OnListClick: TFrameExplorerHistListClick  read FOnListClick write FOnListClick;
     property OnListDelete: TFrameExplorerHistListClick  read FOnListDelete write FOnListDelete;
     property OnFolderOpen : TFrameExplorerHistListClick read FOnFolderOpen write FOnFolderOpen;
@@ -92,6 +93,10 @@ begin
   FListBox := TListBoxExplorerHist.Create(Self);
   FListBox.Parent := Self;
   FListBox.Align := alClient;
+  // Explorer本体のファイル一覧と同じ文字高を使い、埋込み先の
+  // 拡大済みフォームフォントを履歴だけ再継承しない。
+  FListBox.ParentFont := False;
+  FListBox.Font.Height := -11;
   FListBox.ItemHeight := 24;
   FListBox.ImageList := ImageListType;
   FListBox.Color :=  A2SCListBoxBackground;

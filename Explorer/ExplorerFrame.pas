@@ -7,7 +7,7 @@ uses
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs,RTTIPersistentFrame,ListViewThumbnail,
   Vcl.StdCtrls, Vcl.ExtCtrls,ExplorerFileList,ExplorerHistFrame,ExplorerHist,
   ExplorerListViewFrame,DropFile,ConfigPanel,ListViewRTTI,ExplorerFolderList,ToolBarPanelManager,ExplorerTreeFrame,
-  Vcl.ComCtrls, Vcl.ToolWin;
+  Vcl.ComCtrls, Vcl.ToolWin, DarkPanel;
 
 
 type
@@ -33,18 +33,18 @@ type
 
 type
   TFrameExplorer = class(TFrame)
-    PanelFavorite: TPanel;
+    PanelFavorite: TDarkPanel;
     TimerDandD: TTimer;
-    PanelConfig: TPanel;
+    PanelConfig: TDarkPanel;
     Splitter1: TSplitter;
-    PanelExplorer: TPanel;
+    PanelExplorer: TDarkPanel;
     Splitter2: TSplitter;
-    PanelTool: TPanel;
+    PanelTool: TDarkPanel;
     ToolBar1: TToolBar;
     tbFavorite: TToolButton;
     tbTree: TToolButton;
-    PanelTree: TPanel;
-    PanelEdit: TPanel;
+    PanelTree: TDarkPanel;
+    PanelEdit: TDarkPanel;
     procedure TimerDandDTimer(Sender: TObject);
   private
     { Private 宣言 }

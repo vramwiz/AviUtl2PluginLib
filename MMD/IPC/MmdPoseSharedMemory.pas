@@ -18,12 +18,13 @@ type
 
 // 両プラグインで同じ絶対PMXパスを照合するための安定したハッシュを返す。
 function HashModelPath(const FileName: string): UInt64;
-// 指定レイヤーの現フレーム姿勢を共有メモリへ発行する。
+// 指定レイヤーで評価された姿勢を共有メモリへ発行する。
 function PublishPoseSnapshot(Layer: Integer; const Snapshot: TMmdPoseSharedSnapshot): Boolean;
-// 指定レイヤーから姿勢を取得し、フレームとモデルが一致した場合だけ成功する。
-function TryReadPoseSnapshot(Layer, TimelineFrame: Integer; ModelPathHash: UInt64;
+// 指定レイヤーから姿勢を取得し、モデルが一致した場合だけ成功する。
+// ポーズの存在範囲は呼出側のGetImageObjectで判定するため、フレームは照合しない。
+function TryReadPoseSnapshot(Layer: Integer; ModelPathHash: UInt64;
   out Snapshot: TMmdPoseSharedSnapshot): Boolean;
-// AviUtl2のオブジェクト相対フレームからタイムライン上のフレームを得る。
+// AviUtl2のオブジェクト相対フレームからシーン上のフレームを得る。
 function GetTimelineFrame(const ObjectInfo: POBJECT_INFO): Integer;
 
 implementation
@@ -65,7 +66,7 @@ type
     constructor Create(Layer: Integer);
     destructor Destroy; override;
     function Publish(const Snapshot: TMmdPoseSharedSnapshot): Boolean;
-    function TryRead(TimelineFrame: Integer; ModelPathHash: UInt64;
+    function TryRead(ModelPathHash: UInt64;
       out Snapshot: TMmdPoseSharedSnapshot): Boolean;
   end;
 
@@ -152,8 +153,8 @@ begin
   end;
 end;
 
-function TMmdPoseSharedChannel.TryRead(TimelineFrame: Integer;
-  ModelPathHash: UInt64; out Snapshot: TMmdPoseSharedSnapshot): Boolean;
+function TMmdPoseSharedChannel.TryRead(ModelPathHash: UInt64;
+  out Snapshot: TMmdPoseSharedSnapshot): Boolean;
 var
   Bytes: TBytes;
 begin
@@ -165,7 +166,6 @@ begin
     if (FView^.Magic <> MMD_POSE_SHARED_MAGIC) or
       (FView^.Version <> MMD_POSE_SHARED_VERSION) or
       ((FView^.Sequence and 1) <> 0) or
-      (FView^.TimelineFrame <> TimelineFrame) or
       (FView^.ModelPathHash <> ModelPathHash) or
       (FView^.DataLength > MMD_POSE_SHARED_DATA_SIZE) then
       Exit;
@@ -227,18 +227,18 @@ begin
   Result := (Layer >= 0) and GetChannel(Layer).Publish(Snapshot);
 end;
 
-function TryReadPoseSnapshot(Layer, TimelineFrame: Integer;
-  ModelPathHash: UInt64; out Snapshot: TMmdPoseSharedSnapshot): Boolean;
+function TryReadPoseSnapshot(Layer: Integer; ModelPathHash: UInt64;
+  out Snapshot: TMmdPoseSharedSnapshot): Boolean;
 begin
   Result := (Layer >= 0) and (ModelPathHash <> 0) and
-    GetChannel(Layer).TryRead(TimelineFrame, ModelPathHash, Snapshot);
+    GetChannel(Layer).TryRead(ModelPathHash, Snapshot);
 end;
 
 function GetTimelineFrame(const ObjectInfo: POBJECT_INFO): Integer;
 begin
   if ObjectInfo = nil then
     Exit(Low(Integer));
-  Result := ObjectInfo^.OriginFrame + ObjectInfo^.Frame;
+  Result := ObjectInfo^.FrameS + ObjectInfo^.Frame;
 end;
 
 initialization

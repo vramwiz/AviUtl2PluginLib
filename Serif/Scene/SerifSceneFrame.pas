@@ -4,9 +4,10 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
-  Winapi.UxTheme, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,SerifSceneList,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,SerifSceneList,
   Vcl.ExtCtrls, Vcl.StdCtrls,SerifSceneMsgFrame,SerifCharaList,
-  SerifWatcherList,SerifSceneMsgList,SerifConfig,RTTIPersistentFrame;
+  SerifWatcherList,SerifSceneMsgList,SerifConfig,RTTIPersistentFrame,
+  DarkComboBox, DarkPanel;
 
 type
   TFrameSerifSceneBound = class(TRTTIFrame)
@@ -27,8 +28,8 @@ type
 
 type
   TFrameSerifScene = class(TFrame)
-    PanelTab: TPanel;
-    ComboScene: TComboBox;
+    PanelTab: TDarkPanel;
+    ComboScene: TDarkComboBox;
     procedure ComboSceneChange(Sender: TObject);
   private
     { Private 宣言 }
@@ -104,8 +105,8 @@ uses AppFolderUtils,AviUtl2PluginScene,AviUtl2StyleColors;
 
 procedure TFrameSerifScene.ApplyDpi;
 begin
-  ComboScene.Font.Height := -MulDiv(12, CurrentPPI, 96);
-  PanelTab.Height := MulDiv(29, CurrentPPI, 96);
+  ComboScene.ApplyDpi;
+  PanelTab.ApplyDpi;
   PanelTab.Padding.SetBounds(
     MulDiv(6, CurrentPPI, 96),
     MulDiv(3, CurrentPPI, 96),
@@ -134,10 +135,6 @@ constructor TFrameSerifScene.Create(AOwner: TComponent);
 begin
   inherited;
   Color := A2SCPanelBackground;
-  PanelTab.ParentBackground := False;
-  PanelTab.Color := A2SCPanelBackground;
-  ComboScene.Color := A2SCComboBackground;
-  ComboScene.Font.Color := A2SCComboText;
   FBound  := TFrameSerifSceneBound.Create;
   FBound.Filename  := GetAppFolder('Serif') +  'SerifSceneFrame.ini';       // Windows状態保存ファイル名設定
   FBound.LoadFromFile;
@@ -168,10 +165,6 @@ var
 begin
   FBound.SelfToFrame(Self);
   ApplyDpi;
-
-  // Windowsテーマの明色描画を外し、選択欄とドロップダウンを共通のダーク配色にする。
-  ComboScene.HandleNeeded;
-  SetWindowTheme(ComboScene.Handle, '', '');
 
   FProjectFolder := ProjectFolder;
   FScenes        := Scenes;

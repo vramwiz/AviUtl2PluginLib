@@ -6,7 +6,7 @@ interface
 uses
   Winapi.Windows, System.Classes, System.Types, Vcl.Controls, Vcl.ExtCtrls,
   Vcl.StdCtrls, Vcl.Graphics, Vcl.Forms, SerifCharaIconRenderer,
-  ShortcutAction;
+  ShortcutAction, DarkMemo;
 
 type
   TSerifVoicevoxSimpleWheelEvent = procedure(Sender: TObject;
@@ -26,7 +26,7 @@ type
     FLabelInputHint: TLabel;
     FLabelStyle: TLabel;
     FLoading: Boolean;
-    FMemo: TMemo;
+    FMemo: TDarkMemo;
     FOnPreview: TNotifyEvent;
     FOnEditorExit: TNotifyEvent;
     FOnReedit: TNotifyEvent;
@@ -208,14 +208,12 @@ begin
   FPanelText.ParentBackground := False;
   FPanelText.Padding.SetBounds(7, 6, 5, 6);
 
-  FMemo := TMemo.Create(Self);
+  FMemo := TDarkMemo.Create(Self);
   FMemo.Parent := FPanelText;
   FMemo.Align := alClient;
   FMemo.BorderStyle := bsNone;
-  FMemo.Color := A2SCEditBackground;
   FMemo.Cursor := crIBeam;
-  FMemo.Font.Color := A2SCEditText;
-  FMemo.Font.Height := -14;
+  FMemo.DesignFontHeight := 14;
   FMemo.ScrollBars := ssNone;
   FMemo.WantReturns := True;
   FMemo.WordWrap := True;
@@ -266,7 +264,7 @@ begin
     TSerifVoicevoxSimpleInputViewScale(6, CurrentPPI));
   // 200%時の28pxを基準に、ほかのDPIでも周囲と同じ比率で拡縮する。
   FLabelStyle.Font.Height := -TSerifVoicevoxSimpleInputViewScale(14, CurrentPPI);
-  FMemo.Font.Height := -TSerifVoicevoxSimpleInputViewScale(14, CurrentPPI);
+  FMemo.ApplyDpi;
   FLabelInputHint.Font.Height :=
     -TSerifVoicevoxSimpleInputViewScale(11, CurrentPPI);
   FPaintSpeaker.Invalidate;

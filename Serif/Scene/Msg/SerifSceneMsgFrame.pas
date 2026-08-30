@@ -107,8 +107,8 @@ type
 
 implementation
 
-uses AliasManager,AviUtl2PluginCore,AliasManagerNormalAudio,AliasManagerScriptSerif,
-     AviUtl2Serif,AviUtl2PluginCursorControl,AviUtl2StyleColors;
+uses AviUtl2PluginCore, AviUtl2Serif, AviUtl2PluginCursorControl,
+     AviUtl2StyleColors;
 
 {$R *.dfm}
 

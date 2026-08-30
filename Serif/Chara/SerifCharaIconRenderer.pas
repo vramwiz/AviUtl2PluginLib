@@ -4,7 +4,8 @@ unit SerifCharaIconRenderer;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.Types, Vcl.Graphics, BitmapCache;
+  System.SysUtils, System.Classes, System.Types, System.UITypes,
+  Vcl.Graphics, BitmapCache;
 
 type
   TSerifCharaIconRenderer = class

@@ -79,7 +79,7 @@ type
 
 implementation
 
-uses  ListViewEditPluginLib,ListViewEditPluginDialog,AviUtl2AliasSelected,SectionFileManager;
+uses  ListViewEditPluginLib,ListViewEditPluginDialog,ExplorerAviUtlBridge,SectionFileManager;
 
 
 { TExplorerFileAliasList }
@@ -169,7 +169,7 @@ var
 begin
   ts := TStringList.Create;
   try
-    AviUtl2GetSelectedAlias(ts);
+    ExplorerGetSelectedAlias(ts);
     Name := AliasToName(ts);
     Alias := ts.Text;
   finally

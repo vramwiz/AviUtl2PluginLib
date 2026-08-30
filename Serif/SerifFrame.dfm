@@ -4,7 +4,7 @@ object FrameSerif: TFrameSerif
   Width = 640
   Height = 480
   TabOrder = 0
-  object PanelClient: TPanel
+  object PanelClient: TDarkPanel
     Left = 0
     Top = 48
     Width = 640
@@ -12,7 +12,7 @@ object FrameSerif: TFrameSerif
     Align = alClient
     BevelOuter = bvNone
     TabOrder = 0
-    object PanelChara: TPanel
+    object PanelChara: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -21,7 +21,7 @@ object FrameSerif: TFrameSerif
       BevelOuter = bvNone
       TabOrder = 0
     end
-    object PanelConfig: TPanel
+    object PanelConfig: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -30,7 +30,7 @@ object FrameSerif: TFrameSerif
       BevelOuter = bvNone
       TabOrder = 1
     end
-    object PanelProject: TPanel
+    object PanelProject: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -39,7 +39,7 @@ object FrameSerif: TFrameSerif
       BevelOuter = bvNone
       TabOrder = 3
     end
-    object PanelScenario: TPanel
+    object PanelScenario: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -48,7 +48,7 @@ object FrameSerif: TFrameSerif
       BevelOuter = bvNone
       TabOrder = 4
     end
-    object PanelSerif: TPanel
+    object PanelSerif: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -57,7 +57,7 @@ object FrameSerif: TFrameSerif
       BevelOuter = bvNone
       TabOrder = 5
     end
-    object PanelDraw: TPanel
+    object PanelDraw: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -66,7 +66,7 @@ object FrameSerif: TFrameSerif
       BevelOuter = bvNone
       TabOrder = 6
     end
-    object PanelView: TPanel
+    object PanelView: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -75,7 +75,7 @@ object FrameSerif: TFrameSerif
       BevelOuter = bvNone
       TabOrder = 7
     end
-    object PanelBoard: TPanel
+    object PanelBoard: TDarkPanel
       Left = 0
       Top = 0
       Width = 640
@@ -150,7 +150,7 @@ object FrameSerif: TFrameSerif
       Style = tbsCheck
     end
   end
-  object PanelMonitor: TPanel
+  object PanelMonitor: TDarkPanel
     Left = 0
     Top = 0
     Width = 640

@@ -5,13 +5,13 @@ interface
 uses
   System.Classes, System.Types, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls,
   Vcl.ExtCtrls, Vcl.Graphics, Vcl.ImgList, DragAgent, ToolbarButtons,
-  ListBoxEdit;
+  ListBoxEdit, DarkLabel, DarkPanel;
 
 type
   TFrameSerifDraw = class(TFrame)
-    PanelTitle: TPanel;
-    LabelTitle: TLabel;
-    PanelCommands: TPanel;
+    PanelTitle: TDarkPanel;
+    LabelTitle: TDarkLabel;
+    PanelCommands: TDarkPanel;
     LBoxObjects: TListBoxEdit;
   private
     FDrag: TDragFiles;
@@ -51,7 +51,7 @@ implementation
 
 uses
   System.SysUtils, System.IniFiles, System.NetEncoding, System.UITypes, Vcl.Dialogs,
-  AppFolderUtils, AviUtl2Serif, AviUtl2StyleColors;
+  AppFolderUtils, AviUtl2Serif, AviUtl2StyleColors, SerifAviUtlProfile;
 
 {$R *.dfm}
 
@@ -65,12 +65,11 @@ begin
   LoadPresets;
 
   Color := A2SCPanelBackground;
-  PanelTitle.Color := A2SCPanelBackground;
   PanelTitle.Height := 20;
   PanelCommands.Color := A2SCToolBarBackground;
   PanelCommands.Height := 24;
-  LabelTitle.Font.Color := A2SCPanelText;
-  LabelTitle.Font.Height := -13;
+  LabelTitle.TextColor := A2SCPanelText;
+  LabelTitle.DesignFontHeight := 13;
 
   FToolBarImages := TImageList.Create(Self);
   FToolBarImages.ColorDepth := cd32Bit;
@@ -231,9 +230,12 @@ begin
 end;
 
 function TFrameSerifDraw.IsValidPresetAlias(const AliasText: string): Boolean;
+var
+  Profile: TSerifAviUtlProfile;
 begin
-  Result := (Pos('effect.name=フィルタオブジェクト', AliasText) > 0) and
-            (Pos('effect.name=新旧朗2 セリフ表示', AliasText) > 0);
+  Profile := CurrentSerifAviUtlProfile;
+  Result := (Pos('effect.name=' + Profile.FilterObjectName, AliasText) > 0) and
+            (Pos('effect.name=' + Profile.SerifDrawEffectName, AliasText) > 0);
 end;
 
 procedure TFrameSerifDraw.RefreshPresetList;

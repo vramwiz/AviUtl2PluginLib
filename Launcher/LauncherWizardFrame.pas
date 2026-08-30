@@ -7,7 +7,8 @@ uses
   Winapi.Windows, Winapi.Messages, Winapi.TlHelp32, Winapi.PsAPI,
   System.SysUtils, System.Variants, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.Menus,LauncherListView,
-  Vcl.StdCtrls, Vcl.ExtCtrls;
+  Vcl.StdCtrls, Vcl.ExtCtrls,
+  DarkButton, DarkPanel, DarkThemeDpiContext;
 
 type
   TLauncherWizardRegisterEvent = procedure(Sender: TObject;
@@ -16,9 +17,15 @@ type
 
 type
   TFrameLauncherWizard = class(TFrame)
+  private const
+    // 96 DPI等倍では埋込み表示上で小さく見えるため、一覧との視覚差を
+    // 抑えつつ200%時の過大表示へ戻らない約131%を登録操作部だけに使う。
+    // 共通32pxボタンは42px、12px文字は16pxになる。
+    LAUNCHER_WIZARD_UI_DPI = 126;
+  published
     MenuPopup: TPopupMenu;
     MenuAppRefresh: TMenuItem;
-    Panel1: TPanel;
+    Panel1: TDarkPanel;
     btnOk: TButton;
     btnCancel: TButton;
     // 起動中アプリ一覧を再検索する。
@@ -26,6 +33,9 @@ type
   private
     { Private 宣言 }
     FListView: TLauncherListView; // 起動中アプリを表示する一覧。
+    FButtonOk: TDarkButton; // 共通ダークテーマの登録ボタン。
+    FButtonCancel: TDarkButton; // 共通ダークテーマのキャンセルボタン。
+    FDpiContext: TDarkThemeDpiContext; // この画面で共有するDPI情報。
     FOnCancel: TLauncherWizardCancelEvent; // キャンセル時の画面遷移通知。
     FOnRegister: TLauncherWizardRegisterEvent; // 登録確定時の通知。
     FRegisteredList: TLauncherListViewList; // 既に登録済みの除外対象リスト。
@@ -39,6 +49,8 @@ type
     procedure RegisterSelected;
     // 起動中アプリを検索して一覧へ表示する。
     procedure ScanRunningApplications;
+    // 現在の表示モニターに合わせて共通寸法を反映する。
+    procedure ApplyDpi;
   public
     { Public 宣言 }
     // ウィザードを初期化する。
@@ -55,7 +67,7 @@ type
 
 implementation
 
-uses AppFolderUtils,AviUtl2StyleColors;
+uses AppFolderUtils, DarkThemeColors, DarkThemeMetrics;
 
 {$R *.dfm}
 
@@ -67,26 +79,44 @@ begin
 
   ParentFont := False;
   Font.Height := -12;
-  Panel1.Height := MulDiv(32, CurrentPPI, 96);
-  Panel1.ParentFont := False;
-  Panel1.Font.Height := -12;
-  btnOk.Align := alLeft;
-  btnOk.Width := Panel1.Width div 2;
-  btnOk.ParentFont := False;
-  btnOk.Font.Height := -12;
-  btnCancel.Align := alClient;
-  btnCancel.ParentFont := False;
-  btnCancel.Font.Height := -12;
-  btnOk.OnClick := ButtonOkClick;
-  btnCancel.OnClick := ButtonCancelClick;
+  FDpiContext := TDarkThemeDpiContext.Create(Self);
+  FDpiContext.Dpi := LAUNCHER_WIZARD_UI_DPI;
+  Panel1.DpiContext := FDpiContext;
+  Panel1.DesignHeight := DarkThemeButtonHeight;
+  btnOk.Visible := False;
+  btnCancel.Visible := False;
+
+  FButtonCancel := TDarkButton.Create(Self);
+  FButtonCancel.Parent := Panel1;
+  FButtonCancel.DpiContext := FDpiContext;
+  FButtonCancel.Align := alClient;
+  FButtonCancel.Caption := btnCancel.Caption;
+  FButtonCancel.Cancel := True;
+  FButtonCancel.OnClick := ButtonCancelClick;
+
+  FButtonOk := TDarkButton.Create(Self);
+  FButtonOk.Parent := Panel1;
+  FButtonOk.DpiContext := FDpiContext;
+  FButtonOk.Align := alLeft;
+  FButtonOk.Width := Panel1.Width div 2;
+  FButtonOk.Caption := btnOk.Caption;
+  FButtonOk.Default := True;
+  FButtonOk.OnClick := ButtonOkClick;
 
   FListView := TLauncherListView.Create(Self);
   FListView.Parent := Self;
   FListView.Align := alClient;
   FListView.PopupMenu := MenuPopup;
-  FListView.Color := A2SCListViewBackground;
-  FListView.Font.Color := A2SCListViewText;
+  FListView.Color := DarkThemeListBackground;
+  FListView.Font.Color := DarkThemeListText;
   FListView.OnItemDblClick := ListViewItemDblClick;
+end;
+
+procedure TFrameLauncherWizard.ApplyDpi;
+begin
+  // 親アプリの200% DPIへは追従せず、登録操作部用の中間寸法へ戻す。
+  FDpiContext.Dpi := LAUNCHER_WIZARD_UI_DPI;
+  Font.Height := FDpiContext.Metrics.FontHeight;
 end;
 
 destructor TFrameLauncherWizard.Destroy;
@@ -181,6 +211,7 @@ end;
 procedure TFrameLauncherWizard.Show;
 begin
   inherited Show;
+  ApplyDpi;
   ScanRunningApplications;
 end;
 

@@ -5,7 +5,7 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls,System.IOUtils,System.Types,
-  SerifWatcherList,Vcl.Menus, Vcl.ExtCtrls;
+  SerifWatcherList,Vcl.Menus, Vcl.ExtCtrls, DarkLabel, DarkPanel;
 
 type
   // ÉZÉäÉtäƒéãÅ^ëóêMèÛë‘
@@ -18,10 +18,10 @@ type  TFrameSerifMonitorEvent = procedure(Sender: TObject;const WatchState : TSe
 type
   TFrameSerifMonitor = class(TFrame)
     btnStartStop: TButton;
-    LabelStatus: TLabel;
+    LabelStatus: TDarkLabel;
     MenuPop: TPopupMenu;
     MenuDelete: TMenuItem;
-    PanelBase: TPanel;
+    PanelBase: TDarkPanel;
     PopupMenu1: TPopupMenu;
     MenuItem1: TMenuItem;
     procedure btnStartStopClick(Sender: TObject);
@@ -51,7 +51,7 @@ type
 
 implementation
 
-uses AviUtl2PluginCore,AviUtl2StyleColors;
+uses AviUtl2PluginCore;
 
 {$R *.dfm}
 
@@ -61,14 +61,11 @@ constructor TFrameSerifMonitor.Create(AOwner: TComponent);
 begin
   inherited;
 
-  PanelBase.Color := A2SCPanelBackground;
-  PanelBase.Font.Color := A2SCPanelText;
-  PanelBase.Font.Height := -13;
   LabelStatus.Align := alClient;
   LabelStatus.Alignment := taCenter;
   LabelStatus.AutoSize := False;
+  LabelStatus.DesignFontHeight := 13;
   LabelStatus.Layout := tlCenter;
-  LabelStatus.Transparent := True;
 
 end;
 
@@ -95,7 +92,7 @@ procedure TFrameSerifMonitor.SetStatusText(const Text: string; Color: TColor;
   Style: TFontStyles);
 begin
   FStatusText := Text;
-  LabelStatus.Font.Color := Color;
+  LabelStatus.TextColor := Color;
   LabelStatus.Font.Style := Style;
   ApplyStatusText;
 end;

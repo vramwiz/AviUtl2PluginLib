@@ -17,7 +17,7 @@ object FrameSerifBoard: TFrameSerifBoard
     ExplicitTop = 205
     ExplicitWidth = 435
   end
-  object LBoxStyle: TListBox
+  object LBoxStyle: TDarkListBox
     Left = 0
     Top = 23
     Width = 395
@@ -27,7 +27,7 @@ object FrameSerifBoard: TFrameSerifBoard
     TabOrder = 0
     OnClick = LBoxStyleClick
   end
-  object CBoxResolution: TComboBox
+  object CBoxResolution: TDarkComboBox
     Left = 0
     Top = 0
     Width = 395

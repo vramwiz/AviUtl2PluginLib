@@ -7,7 +7,7 @@ uses
   System.Types, System.Generics.Collections, Vcl.Graphics, Vcl.Controls, Vcl.ExtCtrls, Vcl.StdCtrls,
   SerifSceneMsgListBox, SerifSceneList, SerifSceneMsgList, SerifCharaList,
   SerifSceneMsgListBoxEditor, DragAgent, SerifConfig, ShortcutAction,
-  PSDEditSerifLinkDirection;
+  SerifDirectionCatalog;
 
 type
   TSerifSceneMsgPanelCursorFocusEvent = procedure(Sender: TObject; Layer, Frame: Integer) of object;
@@ -144,9 +144,9 @@ type
 implementation
 
 uses
-  AliasManager, AviUtl2PluginCore, AliasManagerNormalAudio, AliasManagerScriptSerif,
-  AviUtl2Serif, AviUtl2PluginCursorControl,AviUtl2PluginObjectFind,
-  AviUtlSyncSharedMemory,AviUtl2TextUtils;
+  AviUtl2PluginCore, AviUtl2Serif, AviUtl2PluginCursorControl,
+  AviUtl2PluginObjectFind,
+  SerifHostNotifications, AviUtl2TextUtils;
 
 constructor TSerifSceneMsgPanel.Create(AOwner: TComponent);
 begin
@@ -257,7 +257,7 @@ begin
   Msg := TSerifSceneMsgItem(FLbox.Items.Objects[i]);
   FMsgs[i].Assign(Msg);
   // 表情遅延を無効にする
-  AviUtlSyncPSDRefresh;
+  NotifySerifHostVisualRefresh;
   AviUtl2SerifDirectionSetValue(Msg.SerifLayer,Msg.FrameStart,Msg.Direction);
 end;
 
@@ -271,7 +271,7 @@ begin
   Msg := TSerifSceneMsgItem(FLbox.Items.Objects[i]);
   FMsgs[i].Assign(Msg);
   // 表情遅延を無効にする
-  AviUtlSyncPSDRefresh;
+  NotifySerifHostVisualRefresh;
   AviUtl2SerifEmotionSetValue(Msg.SerifLayer,Msg.FrameStart,Msg.Emotion);
 end;
 
@@ -336,8 +336,8 @@ begin
     Exit;
 
   // 演出名に対応する固定一覧の位置を探す
-  for I := Low(PSDEditSerifLinkDirections) to High(PSDEditSerifLinkDirections) do
-    if SameText(PSDEditSerifLinkDirections[I].Name, DirectionName) then
+  for I := Low(SerifDirectionNames) to High(SerifDirectionNames) do
+    if SameText(SerifDirectionNames[I], DirectionName) then
       Exit(I);
 end;
 
@@ -798,14 +798,14 @@ begin
   // 現在の演出位置を1つ前へ戻し、先頭なら未設定にする
   Index := FindDirectionIndex(Msg.Direction);
   if Index < 0 then
-    Index := High(PSDEditSerifLinkDirections)
-  else if Index = Low(PSDEditSerifLinkDirections) then
-    Index := High(PSDEditSerifLinkDirections)
+    Index := High(SerifDirectionNames)
+  else if Index = Low(SerifDirectionNames) then
+    Index := High(SerifDirectionNames)
   else
     Dec(Index);
 
   if Index >= 0 then
-    Msg.Direction := PSDEditSerifLinkDirections[Index].Name;
+    Msg.Direction := SerifDirectionNames[Index];
 
   FLbox.Invalidate;
   DoChange();
@@ -825,13 +825,13 @@ begin
   // 現在の演出位置を1つ先へ進め、未設定なら先頭から始める
   Index := FindDirectionIndex(Msg.Direction);
   if Index < 0 then
-    Index := Low(PSDEditSerifLinkDirections)
-  else if Index >= High(PSDEditSerifLinkDirections) then
-    Index := Low(PSDEditSerifLinkDirections)
+    Index := Low(SerifDirectionNames)
+  else if Index >= High(SerifDirectionNames) then
+    Index := Low(SerifDirectionNames)
   else
     Inc(Index);
 
-  Msg.Direction := PSDEditSerifLinkDirections[Index].Name;
+  Msg.Direction := SerifDirectionNames[Index];
 
   FLbox.Invalidate;
   DoChange();
@@ -973,7 +973,7 @@ begin
   FSelectMsg := FMsgs[i];
   NotifyAIUEOChange;
   // 表情遅延を無効にする
-  AviUtlSyncPSDRefresh;
+  NotifySerifHostVisualRefresh;
   // 未送信セリフには確定したレイヤー・フレーム位置がない。
   if not FSelectMsg.IsOutput then Exit;
   MoveCursorFocus(FSelectMsg.SerifLayer,FSelectMsg.FrameStart);

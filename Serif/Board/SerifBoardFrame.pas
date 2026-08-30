@@ -3,10 +3,10 @@
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, Winapi.ShellAPI, System.SysUtils, System.Variants, System.Classes,Winapi.UxTheme,
+  Winapi.Windows, Winapi.Messages, Winapi.ShellAPI, System.SysUtils, System.Variants, System.Classes,
   System.IOUtils, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls,DragAgent,
   Vcl.ExtCtrls, SerifBoardList,RTTIPersistentFrame,ConfigPanel,SerifBoardRenderBatch,
-  Vcl.Menus;
+  Vcl.Menus, DarkComboBox, DarkListBox;
 
 type
   TFrameSerifBoardBound = class(TRTTIFrame)
@@ -35,8 +35,8 @@ end;
 
 type
   TFrameSerifBoard = class(TFrame)
-    LBoxStyle: TListBox;
-    CBoxResolution: TComboBox;
+    LBoxStyle: TDarkListBox;
+    CBoxResolution: TDarkComboBox;
     PanelConfig: TPanel;
     Splitter1: TSplitter;
     MenuPop: TPopupMenu;
@@ -101,15 +101,8 @@ begin
 
   FRenderBatch := TSerifBoardRenderBatch.Create(FBoardFolder);
 
-  LBoxStyle.Color := A2SCListBoxBackground;
-  LBoxStyle.Font.Color := A2SCListBoxText;
-  LBoxStyle.Font.Height := -13;
-  LBoxStyle.ItemHeight := 24;
-
-  CBoxResolution.Color := A2SCComboBackground;
-  CBoxResolution.Font.Color := A2SCComboText;
-  CBoxResolution.Font.Height := -12;
-
+  LBoxStyle.DesignFontHeight := 13;
+  LBoxStyle.DesignItemHeight := 24;
 
   FBoardList := TSerifBoardListView.Create(Self);
   FBoardList.Parent := Self;
@@ -382,10 +375,6 @@ begin
   FBound.SelfToFrame(Self);
 
   ShowCOnfig;
-
-  // コンボボックスのテーマを外して一覧表示を揃える
-  CBoxResolution.HandleNeeded;
-  SetWindowTheme(CBoxResolution.Handle, '', '');
 
   EnsureBoardStyleFolders;
   if Assigned(FRenderBatch) and FRenderBatch.NeedsRender then
