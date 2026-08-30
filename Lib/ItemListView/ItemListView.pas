@@ -95,6 +95,8 @@ type
       write SetWheelScrollRows;
     property MultiSelect: Boolean read FMultiSelect write FMultiSelect;
     property CaptionEditing: Boolean read GetCaptionEditing;
+    // 現在カーソル下にある項目位置を返し、一覧外では-1を返す。
+    property HotIndex: Integer read FHotIndex;
     property ItemIndex: Integer read FItemIndex write SetItemIndex;
     property RowHeight: Integer read FRowHeight write SetRowHeight;
     property ImageSize: Integer read FImageSize write SetImageSize;
