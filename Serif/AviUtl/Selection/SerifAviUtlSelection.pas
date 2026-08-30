@@ -1,4 +1,5 @@
-unit SerifAviUtlSelection;
+﻿unit SerifAviUtlSelection;
+
 
 {$WARN IMPLICIT_STRING_CAST OFF}
 {$WARN IMPLICIT_STRING_CAST_LOSS OFF}

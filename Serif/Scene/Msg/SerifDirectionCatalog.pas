@@ -1,4 +1,5 @@
-unit SerifDirectionCatalog;
+﻿unit SerifDirectionCatalog;
+
 
 // セリフ編集UIが順送りに利用する製品非依存の演出名一覧。
 

@@ -1,4 +1,4 @@
-unit SerifMonitorFrame;
+ï»¿unit SerifMonitorFrame;
 
 interface
 
@@ -8,10 +8,10 @@ uses
   SerifWatcherList,Vcl.Menus, Vcl.ExtCtrls, DarkLabel, DarkPanel;
 
 type
-  // ƒZƒŠƒtŠÄ‹^‘—Mó‘Ô
-  TSerifWatchState = (swsStandby,   // ‘Ò‹@iƒfƒtƒHƒ‹ƒgj
-                      swsWatch,     // ‹ŒŠÄ‹ó‘ÔBŒ»İ‚Í swsSend ‚Æ‚µ‚Äˆµ‚¤
-                      swsSend       // ‘—MiŠÄ‹{AviUtl2‚Ö—¬‚µ‚İj
+  // ã‚»ãƒªãƒ•ç›£è¦–ï¼é€ä¿¡çŠ¶æ…‹
+  TSerifWatchState = (swsStandby,   // å¾…æ©Ÿï¼ˆãƒ‡ãƒ•ã‚©ãƒ«ãƒˆï¼‰
+                      swsWatch,     // æ—§ç›£è¦–çŠ¶æ…‹ã€‚ç¾åœ¨ã¯ swsSend ã¨ã—ã¦æ‰±ã†
+                      swsSend       // é€ä¿¡ï¼ˆç›£è¦–ï¼‹AviUtl2ã¸æµã—è¾¼ã¿ï¼‰
   );
 type  TFrameSerifMonitorEvent = procedure(Sender: TObject;const WatchState : TSerifWatchState) of object;
 
@@ -27,7 +27,7 @@ type
     procedure btnStartStopClick(Sender: TObject);
     procedure MenuDeleteClick(Sender: TObject);
   private
-    { Private éŒ¾ }
+    { Private å®£è¨€ }
     FOnChange: TFrameSerifMonitorEvent;
     FWatchState : TSerifWatchState;
     FWatchers : TSerifWatcherList;
@@ -39,11 +39,11 @@ type
   protected
       procedure DoChange(const AWatchState : TSerifWatchState);virtual;
   public
-    { Public éŒ¾ }
+    { Public å®£è¨€ }
     constructor Create(AOwner: TComponent); override;
     destructor Destroy;override;
     procedure ShowStatus(Watchers : TSerifWatcherList);
-    // ó‘Ô•\¦‚ğXV
+    // çŠ¶æ…‹è¡¨ç¤ºã‚’æ›´æ–°
     procedure ShowWatch(aWache : string);
     property WatchState : TSerifWatchState read FWatchState write SetWatchState;
     property OnChange : TFrameSerifMonitorEvent read FOnChange write FOnChange;
@@ -61,6 +61,9 @@ constructor TFrameSerifMonitor.Create(AOwner: TComponent);
 begin
   inherited;
 
+  // åŸ‹ã‚è¾¼ã¿å…ˆãƒ•ã‚©ãƒ¼ãƒ ã®DPIã‚¹ã‚±ãƒ¼ãƒªãƒ³ã‚°å¾Œã‚‚ãƒœã‚¿ãƒ³ã ã‘å·¨å¤§åŒ–ã•ã›ãªã„ã€‚
+  btnStartStop.ParentFont := False;
+  btnStartStop.Font.Height := -13;
   LabelStatus.Align := alClient;
   LabelStatus.Alignment := taCenter;
   LabelStatus.AutoSize := False;
@@ -99,7 +102,7 @@ end;
 
 procedure TFrameSerifMonitor.SetWatchState(const Value: TSerifWatchState);
 begin
-  // swsWatch ‚Í‹Œİ’èŒİŠ·—pB‰æ–Ê•\¦ã‚àŒ»İ‚Ì swsSend ‚ÉŠñ‚¹‚éB
+  // swsWatch ã¯æ—§è¨­å®šäº’æ›ç”¨ã€‚ç”»é¢è¡¨ç¤ºä¸Šã‚‚ç¾åœ¨ã® swsSend ã«å¯„ã›ã‚‹ã€‚
   if Value = swsWatch then
     FWatchState := swsSend
   else
@@ -110,45 +113,45 @@ end;
 procedure TFrameSerifMonitor.ShowStatus(Watchers : TSerifWatcherList);
 begin
   FWatchers := Watchers;
-  // ŒÃ‚¢ swsWatch ‚ªc‚Á‚Ä‚¢‚Ä‚àAƒXƒe[ƒ^ƒX•\¦‚Í—¬‚µ‚İ’†‚Æ‚µ‚Äˆµ‚¤B
+  // å¤ã„ swsWatch ãŒæ®‹ã£ã¦ã„ã¦ã‚‚ã€ã‚¹ãƒ†ãƒ¼ã‚¿ã‚¹è¡¨ç¤ºã¯æµã—è¾¼ã¿ä¸­ã¨ã—ã¦æ‰±ã†ã€‚
   if FWatchState = swsWatch then
     FWatchState := swsSend;
   FWatchText := '';
   btnStartStop.Enabled := False;
-  btnStartStop.Caption := 'ŠJn';
+  btnStartStop.Caption := 'é–‹å§‹';
   Self.Color := clBlack;
   if FWatchers = nil then begin
-    SetStatusText('ƒZƒŠƒt–¢Ú‘±', clYellow, []);
+    SetStatusText('ã‚»ãƒªãƒ•æœªæ¥ç¶š', clYellow, []);
     Exit;
   end;
   if FWatchers.Count = 0 then begin
-    SetStatusText('ŠÄ‹İ’è‚È‚µ', clYellow, []);
+    SetStatusText('ç›£è¦–è¨­å®šãªã—', clYellow, []);
     Exit;
   end;
   if FWatchers[0].Folder = '' then begin
-    SetStatusText('ƒtƒHƒ‹ƒ_–¢İ’è', clYellow, []);
+    SetStatusText('ãƒ•ã‚©ãƒ«ãƒ€æœªè¨­å®š', clYellow, []);
     Exit;
   end;
   btnStartStop.Enabled := True;
   case FWatchState of
     swsStandby: begin
-      btnStartStop.Caption := 'ŠJn';
-      SetStatusText('‘Ò‹@’†', clWhite, []);
+      btnStartStop.Caption := 'é–‹å§‹';
+      SetStatusText('å¾…æ©Ÿä¸­', clWhite, []);
     end;
     swsWatch: begin
       if GAviUtl2Plugin then begin
-        btnStartStop.Caption := '—¬“ü';
-        SetStatusText('ŠÄ‹’†', clRed, [TFontStyle.fsBold]);
+        btnStartStop.Caption := 'æµå…¥';
+        SetStatusText('ç›£è¦–ä¸­', clRed, [TFontStyle.fsBold]);
       end
       else begin
-        btnStartStop.Caption := '’â~';
-        SetStatusText('—¬‚µ‚İ’†', clRed, [TFontStyle.fsBold]);
+        btnStartStop.Caption := 'åœæ­¢';
+        SetStatusText('æµã—è¾¼ã¿ä¸­', clRed, [TFontStyle.fsBold]);
       end;
     end;
     swsSend: begin
-      btnStartStop.Caption := '’â~';
+      btnStartStop.Caption := 'åœæ­¢';
       Self.Color := clBlue;
-      SetStatusText('—¬“ü’†', clRed, [TFontStyle.fsBold]);
+      SetStatusText('æµå…¥ä¸­', clRed, [TFontStyle.fsBold]);
     end;
   end;
 end;
@@ -157,7 +160,7 @@ end;
 procedure TFrameSerifMonitor.btnStartStopClick(Sender: TObject);
 begin
   case FWatchState of
-    // Œ»İ‚Í’P“ÆŠÄ‹ swsWatch ‚ğg‚í‚¸AŠJn‚Íí‚É—¬‚µ‚İó‘Ô‚É‚·‚éB
+    // ç¾åœ¨ã¯å˜ç‹¬ç›£è¦– swsWatch ã‚’ä½¿ã‚ãšã€é–‹å§‹ã¯å¸¸ã«æµã—è¾¼ã¿çŠ¶æ…‹ã«ã™ã‚‹ã€‚
     swsStandby : FWatchState := swsSend;
     swsWatch   : FWatchState := swsStandby;
     swsSend    : FWatchState := swsStandby;

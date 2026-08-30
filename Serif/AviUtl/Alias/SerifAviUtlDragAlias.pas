@@ -1,4 +1,5 @@
-unit SerifAviUtlDragAlias;
+﻿unit SerifAviUtlDragAlias;
+
 
 {$WARN IMPLICIT_STRING_CAST OFF}
 {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
@@ -31,6 +32,7 @@ uses
   AviUtl2PluginTypes,
   AviUtl2TimeConvert,
   SerifAviUtlAliasProvider,
+  SerifAviUtlDrawAliasBuilder,
   SerifAviUtlProfile;
 
 var
@@ -70,7 +72,7 @@ begin
   Lines := TStringList.Create;
   Encoding := TUTF8Encoding.Create(False);
   try
-    Lines.Text := AliasText;
+    Lines.Text := NormalizeSerifDrawDragAlias(AliasText);
     FileName := CreateUniqueDragFileName;
     Lines.SaveToFile(FileName, Encoding);
     Result := FileName;
@@ -142,7 +144,8 @@ begin
       end;
     if not HasSerifDraw then
     begin
-      ErrorMessage := '選択中オブジェクトに「新旧朗2 セリフ表示」がありません。';
+      ErrorMessage := '選択中オブジェクトに「' +
+        Profile.SerifDrawEffectName + '」がありません。';
       Exit;
     end;
 
@@ -152,13 +155,6 @@ begin
       ErrorMessage := '選択中オブジェクトのエイリアスが空です。';
       Exit;
     end;
-    for Index := 0 to Lines.Count - 1 do
-      if SameText(Lines[Index], '[Object]') then
-        Lines[Index] := '[0]'
-      else if StartsText('[Object.', Lines[Index]) then
-        Lines[Index] := '[0.' + Copy(Lines[Index], Length('[Object.') + 1,
-          MaxInt);
-
     AviUtl2GetObjectLayerFrame(Obj, Layer, FrameStart, FrameEnd);
     HasLayer := False;
     for Index := 0 to Lines.Count - 1 do
@@ -170,7 +166,7 @@ begin
     if not HasLayer then
       Lines.Insert(1, 'layer=' + IntToStr(Layer));
 
-    AliasText := Lines.Text;
+    AliasText := NormalizeSerifDrawDragAlias(Lines.Text);
     Result := True;
   finally
     Lines.Free;

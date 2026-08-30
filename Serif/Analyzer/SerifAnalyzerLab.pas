@@ -1,4 +1,5 @@
-unit SerifAnalyzerLab;
+﻿unit SerifAnalyzerLab;
+
 
 // 外部LABファイルを新旧朗2内部LAB形式へ変換するためのユニット。
 //

@@ -1,4 +1,5 @@
-unit SerifAviUtlSyncroh2Adapter;
+﻿unit SerifAviUtlSyncroh2Adapter;
+
 
 interface
 
@@ -6,12 +7,12 @@ implementation
 
 uses
   AliasManager,
-  AliasManagerFilterSerifDraw,
   AliasManagerNormalAudio,
   AliasManagerObjectPicture,
   AliasManagerScriptSerif,
   AliasManagerStringList,
   SerifAviUtlAliasProvider,
+  SerifAviUtlDrawAliasBuilder,
   SerifAviUtlProfile;
 
 {$WARN IMPLICIT_STRING_CAST OFF}
@@ -96,19 +97,10 @@ begin
 end;
 
 function BuildSyncroh2DrawAlias: string;
-var
-  AliasStrings: TAliasStringList;
-  SerifDraw: TAliasManagerFilterSerifDraw;
 begin
-  AliasStrings := TAliasStringList.Create;
-  SerifDraw := TAliasManagerFilterSerifDraw.Create;
-  try
-    SerifDraw.SaveAsFilterAlias(AliasStrings);
-    Result := AliasStrings.SaveToText;
-  finally
-    SerifDraw.Free;
-    AliasStrings.Free;
-  end;
+  Result := BuildDefaultSerifDrawAlias(
+    CurrentSerifAviUtlProfile.FilterObjectName,
+    CurrentSerifAviUtlProfile.SerifDrawEffectName);
 end;
 
 function BuildSyncroh2AliasBatch: string;

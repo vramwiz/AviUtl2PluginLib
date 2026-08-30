@@ -1,46 +1,46 @@
-{
+ï»¿{
   -------------------------------------------------------------------------------
-  ŠT—v
+  æ¦‚è¦
   -------------------------------------------------------------------------------
-  ‚±‚Ìƒ†ƒjƒbƒg‚ÍAWindows ‚Ì‹¤—Lƒƒ‚ƒŠiƒƒ‚ƒŠƒ}ƒbƒvƒgƒtƒ@ƒCƒ‹jAPI
-  CreateFileMapping / MapViewOfFile ‚ğ Delphi ‚©‚çˆÀ‘S‚É—˜—p‚·‚é‚½‚ß‚Ì
-  Šî–{ƒNƒ‰ƒXŒQ‚ğ’ñ‹Ÿ‚µ‚Ü‚·B
+  ã“ã®ãƒ¦ãƒ‹ãƒƒãƒˆã¯ã€Windows ã®å…±æœ‰ãƒ¡ãƒ¢ãƒªï¼ˆãƒ¡ãƒ¢ãƒªãƒãƒƒãƒ—ãƒˆãƒ•ã‚¡ã‚¤ãƒ«ï¼‰API
+  CreateFileMapping / MapViewOfFile ã‚’ Delphi ã‹ã‚‰å®‰å…¨ã«åˆ©ç”¨ã™ã‚‹ãŸã‚ã®
+  åŸºæœ¬ã‚¯ãƒ©ã‚¹ç¾¤ã‚’æä¾›ã—ã¾ã™ã€‚
 
   TSharedMemoryBase
-    - –¼‘O•t‚«‹¤—Lƒƒ‚ƒŠ‚Ìì¬Aƒ}ƒbƒsƒ“ƒOA‰ğ•ú‚ğŠÇ—‚·‚éŠî‘bƒNƒ‰ƒXB
-    - ŒÅ’èƒTƒCƒY‚Ìƒoƒbƒtƒ@‚ğŠm•Û‚µA”CˆÓ‚ÌƒoƒCƒiƒŠ^\‘¢‘Ìƒf[ƒ^‚ğ
-      “Ç‚İ‘‚«‚Å‚«‚é‚æ‚¤İŒv‚³‚ê‚Ä‚¢‚Ü‚·B
-    - ƒtƒ@ƒCƒ‹ƒnƒ“ƒhƒ‹‚ğg—p‚¹‚¸Aƒˆ‚Éƒƒ‚ƒŠã‚Å‹¤—L‚³‚ê‚éƒ[ƒJƒ‹ƒ}ƒbƒv‚ğ¶¬‚µ‚Ü‚·B
+    - åå‰ä»˜ãå…±æœ‰ãƒ¡ãƒ¢ãƒªã®ä½œæˆã€ãƒãƒƒãƒ”ãƒ³ã‚°ã€è§£æ”¾ã‚’ç®¡ç†ã™ã‚‹åŸºç¤ã‚¯ãƒ©ã‚¹ã€‚
+    - å›ºå®šã‚µã‚¤ã‚ºã®ãƒãƒƒãƒ•ã‚¡ã‚’ç¢ºä¿ã—ã€ä»»æ„ã®ãƒã‚¤ãƒŠãƒªï¼æ§‹é€ ä½“ãƒ‡ãƒ¼ã‚¿ã‚’
+      èª­ã¿æ›¸ãã§ãã‚‹ã‚ˆã†è¨­è¨ˆã•ã‚Œã¦ã„ã¾ã™ã€‚
+    - ãƒ•ã‚¡ã‚¤ãƒ«ãƒãƒ³ãƒ‰ãƒ«ã‚’ä½¿ç”¨ã›ãšã€ç´”ç²‹ã«ãƒ¡ãƒ¢ãƒªä¸Šã§å…±æœ‰ã•ã‚Œã‚‹ãƒ­ãƒ¼ã‚«ãƒ«ãƒãƒƒãƒ—ã‚’ç”Ÿæˆã—ã¾ã™ã€‚
 
   TSharedMemoryStringList
-    - ŒÅ’è’·•¶š—ñ‚Ì”z—ñ‚ğ‹¤—Lƒƒ‚ƒŠã‚É”z’u‚·‚éÀ‘•ƒNƒ‰ƒXB
-    - Add / IndexOf / Strings[] ‚È‚Ç‚ÌƒVƒ“ƒvƒ‹‚ÈƒCƒ“ƒ^[ƒtƒFƒCƒX‚ğ‚¿A
-      •¡”ƒtƒH[ƒ€‚Ü‚½‚Í•¡”ƒvƒƒZƒXŠÔ‚Å•¶š—ñƒŠƒXƒg‚ğ‹¤—L‰Â”\‚Å‚·B
-    - ƒƒ‚ƒŠƒTƒCƒY‚Í Create ‚És”iMaxLinesj‚Æ•¶š—ñ’·iMaxLenj‚Åw’è‚µ‚Ü‚·B
+    - å›ºå®šé•·æ–‡å­—åˆ—ã®é…åˆ—ã‚’å…±æœ‰ãƒ¡ãƒ¢ãƒªä¸Šã«é…ç½®ã™ã‚‹å®Ÿè£…ã‚¯ãƒ©ã‚¹ã€‚
+    - Add / IndexOf / Strings[] ãªã©ã®ã‚·ãƒ³ãƒ—ãƒ«ãªã‚¤ãƒ³ã‚¿ãƒ¼ãƒ•ã‚§ã‚¤ã‚¹ã‚’æŒã¡ã€
+      è¤‡æ•°ãƒ•ã‚©ãƒ¼ãƒ ã¾ãŸã¯è¤‡æ•°ãƒ—ãƒ­ã‚»ã‚¹é–“ã§æ–‡å­—åˆ—ãƒªã‚¹ãƒˆã‚’å…±æœ‰å¯èƒ½ã§ã™ã€‚
+    - ãƒ¡ãƒ¢ãƒªã‚µã‚¤ã‚ºã¯ Create æ™‚ã«è¡Œæ•°ï¼ˆMaxLinesï¼‰ã¨æ–‡å­—åˆ—é•·ï¼ˆMaxLenï¼‰ã§æŒ‡å®šã—ã¾ã™ã€‚
 
   -------------------------------------------------------------------------------
-  “Á’¥
+  ç‰¹å¾´
   -------------------------------------------------------------------------------
-  E‹¤—Lƒƒ‚ƒŠ‚Ì¶‘¶ŠúŠÔ‚Í CreateFree ‚É‘Î‰‚µA©“®“I‚Éƒnƒ“ƒhƒ‹‚ğŠÇ—B
-  EŒÅ’è’·\‘¢‚Ì‚½‚ßA‰Â•Ï’·•¶š—ñ‚âƒŒƒR[ƒh”j‰ó‚ÌS”z‚ª‚ ‚è‚Ü‚¹‚ñB
-  E“¯ˆêƒ}ƒbƒv–¼‚ğw’è‚·‚é‚±‚Æ‚ÅA•¡”ƒvƒƒZƒX^ƒtƒH[ƒ€ŠÔ‚Åƒf[ƒ^‚ğ‹¤—L‰Â”\B
-  ETStringList ŒİŠ·‚ÌŠÈˆÕƒCƒ“ƒ^[ƒtƒFƒCƒXiAdd / Count / Strings[]j‚ğ’ñ‹ŸB
+  ãƒ»å…±æœ‰ãƒ¡ãƒ¢ãƒªã®ç”Ÿå­˜æœŸé–“ã¯ CreateFree ã«å¯¾å¿œã—ã€è‡ªå‹•çš„ã«ãƒãƒ³ãƒ‰ãƒ«ã‚’ç®¡ç†ã€‚
+  ãƒ»å›ºå®šé•·æ§‹é€ ã®ãŸã‚ã€å¯å¤‰é•·æ–‡å­—åˆ—ã‚„ãƒ¬ã‚³ãƒ¼ãƒ‰ç ´å£Šã®å¿ƒé…ãŒã‚ã‚Šã¾ã›ã‚“ã€‚
+  ãƒ»åŒä¸€ãƒãƒƒãƒ—åã‚’æŒ‡å®šã™ã‚‹ã“ã¨ã§ã€è¤‡æ•°ãƒ—ãƒ­ã‚»ã‚¹ï¼ãƒ•ã‚©ãƒ¼ãƒ é–“ã§ãƒ‡ãƒ¼ã‚¿ã‚’å…±æœ‰å¯èƒ½ã€‚
+  ãƒ»TStringList äº’æ›ã®ç°¡æ˜“ã‚¤ãƒ³ã‚¿ãƒ¼ãƒ•ã‚§ã‚¤ã‚¹ï¼ˆAdd / Count / Strings[]ï¼‰ã‚’æä¾›ã€‚
 
   -------------------------------------------------------------------------------
-  ’ˆÓ–€
+  æ³¨æ„äº‹é …
   -------------------------------------------------------------------------------
-  EŒÅ’èƒTƒCƒY\‘¢‚Ì‚½‚ßA‰Â•Ï’·•¶š—ñiUnicodeString / AnsiStringj‚Íg—p‚Å‚«‚Ü‚¹‚ñB
-  Eƒƒ‚ƒŠƒTƒCƒY‚ğ’´‚¦‚é‘‚«‚İ‚Í©“®“I‚É–³‹‚³‚ê‚Ü‚·iAdd ¨ False ‚ğ•Ô‚·jB
-  E“¯–¼ƒ}ƒbƒv‚ğ•¡”¶¬‚µ‚½ê‡A“¯ˆê‚Ì•¨——Ìˆæ‚ğ‹¤—L‚µ‚Ü‚·B
-  E‚±‚Ìƒ†ƒjƒbƒg‚Í OS ‚Ì IPCiƒvƒƒZƒXŠÔ’ÊMj‹@”\‚ğ’¼Ú—˜—p‚µ‚Ä‚¨‚èA
-    ƒlƒbƒgƒ[ƒN’ÊM‚âƒtƒ@ƒCƒ‹“¯Šú‚ğ–Ú“I‚Æ‚µ‚½‚à‚Ì‚Å‚Í‚ ‚è‚Ü‚¹‚ñB
+  ãƒ»å›ºå®šã‚µã‚¤ã‚ºæ§‹é€ ã®ãŸã‚ã€å¯å¤‰é•·æ–‡å­—åˆ—ï¼ˆUnicodeString / AnsiStringï¼‰ã¯ä½¿ç”¨ã§ãã¾ã›ã‚“ã€‚
+  ãƒ»ãƒ¡ãƒ¢ãƒªã‚µã‚¤ã‚ºã‚’è¶…ãˆã‚‹æ›¸ãè¾¼ã¿ã¯è‡ªå‹•çš„ã«ç„¡è¦–ã•ã‚Œã¾ã™ï¼ˆAdd â†’ False ã‚’è¿”ã™ï¼‰ã€‚
+  ãƒ»åŒåãƒãƒƒãƒ—ã‚’è¤‡æ•°ç”Ÿæˆã—ãŸå ´åˆã€åŒä¸€ã®ç‰©ç†é ˜åŸŸã‚’å…±æœ‰ã—ã¾ã™ã€‚
+  ãƒ»ã“ã®ãƒ¦ãƒ‹ãƒƒãƒˆã¯ OS ã® IPCï¼ˆãƒ—ãƒ­ã‚»ã‚¹é–“é€šä¿¡ï¼‰æ©Ÿèƒ½ã‚’ç›´æ¥åˆ©ç”¨ã—ã¦ãŠã‚Šã€
+    ãƒãƒƒãƒˆãƒ¯ãƒ¼ã‚¯é€šä¿¡ã‚„ãƒ•ã‚¡ã‚¤ãƒ«åŒæœŸã‚’ç›®çš„ã¨ã—ãŸã‚‚ã®ã§ã¯ã‚ã‚Šã¾ã›ã‚“ã€‚
 
   -------------------------------------------------------------------------------
-  ‘Î‰ŠÂ‹«
+  å¯¾å¿œç’°å¢ƒ
   -------------------------------------------------------------------------------
-  - Delphi 10 ˆÈ~
+  - Delphi 10 ä»¥é™
   - Windows 10 / 11
-  - 32bit / 64bit ‘Î‰
+  - 32bit / 64bit å¯¾å¿œ
 
   -------------------------------------------------------------------------------
   License
@@ -53,21 +53,23 @@ unit SharedMemoryBase;
 interface
 
 uses
-  Windows, SysUtils, Math;
+  Winapi.Windows,
+  System.SysUtils,
+  System.Math;
 
 type
-  { ”Ä—p‹¤—Lƒƒ‚ƒŠŠÇ—ƒNƒ‰ƒX }
+  { æ±ç”¨å…±æœ‰ãƒ¡ãƒ¢ãƒªç®¡ç†ã‚¯ãƒ©ã‚¹ }
   TSharedMemoryBase = class
   private
-    FHandle: THandle;   // CreateFileMapping ‚Ìƒnƒ“ƒhƒ‹
-    FView: Pointer;     // MapViewOfFile ‚ÌŒ‹‰Êiƒ}ƒbƒvæƒAƒhƒŒƒXj
-    FSize: Integer;     // Šm•ÛƒTƒCƒYiƒoƒCƒgj
-    FName: string;      // ‹¤—Lƒƒ‚ƒŠ–¼i—áF"Local\SharedMemTest"j
-    FIsOwner: Boolean;  // ‰‰ñ¶¬ƒtƒ‰ƒOiŠù‘¶‚È‚ç Falsej
+    FHandle: THandle;   // CreateFileMapping ã®ãƒãƒ³ãƒ‰ãƒ«
+    FView: Pointer;     // MapViewOfFile ã®çµæœï¼ˆãƒãƒƒãƒ—å…ˆã‚¢ãƒ‰ãƒ¬ã‚¹ï¼‰
+    FSize: Integer;     // ç¢ºä¿ã‚µã‚¤ã‚ºï¼ˆãƒã‚¤ãƒˆï¼‰
+    FName: string;      // å…±æœ‰ãƒ¡ãƒ¢ãƒªåï¼ˆä¾‹ï¼š"Local\SharedMemTest"ï¼‰
+    FIsOwner: Boolean;  // åˆå›ç”Ÿæˆãƒ•ãƒ©ã‚°ï¼ˆæ—¢å­˜ãªã‚‰ Falseï¼‰
 
     function GetIsOpened: Boolean;
   protected
-    { “à•”ƒ†[ƒeƒBƒŠƒeƒBFŠî–{Œ^ƒAƒNƒZƒXiÄ—˜—p—pj }
+    { å†…éƒ¨ãƒ¦ãƒ¼ãƒ†ã‚£ãƒªãƒ†ã‚£ï¼šåŸºæœ¬å‹ã‚¢ã‚¯ã‚»ã‚¹ï¼ˆå†åˆ©ç”¨ç”¨ï¼‰ }
     procedure WriteInt(Dest: PInteger; const Value: Integer);
     function  ReadInt(Src: PInteger): Integer;
 
@@ -76,14 +78,14 @@ type
 
     procedure ClearBuffer(Dest: Pointer; Size: Integer);
 
-    { ƒ}ƒbƒsƒ“ƒO‘€ìi”h¶‘¤‚ÅƒtƒbƒN‰Â”\j }
+    { ãƒãƒƒãƒ”ãƒ³ã‚°æ“ä½œï¼ˆæ´¾ç”Ÿå´ã§ãƒ•ãƒƒã‚¯å¯èƒ½ï¼‰ }
     function Map: Boolean; virtual;
     procedure Unmap; virtual;
   public
     constructor Create(const AName: string; ASize: Integer); virtual;
     destructor Destroy; override;
 
-    { ó‘ÔŠm”F }
+    { çŠ¶æ…‹ç¢ºèª }
     property Handle: THandle read FHandle;
     property View: Pointer read FView;
     property Size: Integer read FSize;
@@ -92,29 +94,29 @@ type
     property IsOwner: Boolean read FIsOwner;
   end;
 
-  { ŒÅ’èƒXƒƒbƒg•û®‚Ì‹¤—L•¶š—ñƒŠƒXƒgƒNƒ‰ƒX      }
+  { å›ºå®šã‚¹ãƒ­ãƒƒãƒˆæ–¹å¼ã®å…±æœ‰æ–‡å­—åˆ—ãƒªã‚¹ãƒˆã‚¯ãƒ©ã‚¹      }
 
   TSharedMemoryStringList = class(TSharedMemoryBase)
   private
-    FMaxLines: Integer;  // Å‘ås”
-    FMaxLen: Integer;    // 1s‚ ‚½‚èÅ‘å•¶š”iWideChar’PˆÊj
+    FMaxLines: Integer;  // æœ€å¤§è¡Œæ•°
+    FMaxLen: Integer;    // 1è¡Œã‚ãŸã‚Šæœ€å¤§æ–‡å­—æ•°ï¼ˆWideCharå˜ä½ï¼‰
 
     function GetCount: Integer;
     procedure SetCount(Value: Integer);
     function GetString(Index: Integer): string;
     procedure SetString(Index: Integer; const Value: string);
   public
-    { ¶¬‚ÉãŒÀ‚ğw’è‚µ‚ÄŠm•ÛƒTƒCƒY‚ğ©“®Zo }
+    { ç”Ÿæˆæ™‚ã«ä¸Šé™ã‚’æŒ‡å®šã—ã¦ç¢ºä¿ã‚µã‚¤ã‚ºã‚’è‡ªå‹•ç®—å‡º }
     constructor Create(const AName: string; AMaxLines, AMaxLen: Integer); reintroduce; virtual;
 
-    function Add(const S: string): Boolean;      // s’Ç‰Á True:¬Œ÷
-    function IndexOf(const S: string): Integer;  // •¶š—ñŒŸõ
+    function Add(const S: string): Boolean;      // è¡Œè¿½åŠ  True:æˆåŠŸ
+    function IndexOf(const S: string): Integer;  // æ–‡å­—åˆ—æ¤œç´¢
 
-    { s”‚ÆŒÂ•ÊƒAƒNƒZƒX }
+    { è¡Œæ•°ã¨å€‹åˆ¥ã‚¢ã‚¯ã‚»ã‚¹ }
     property Count: Integer read GetCount write SetCount;
     property Strings[Index: Integer]: string read GetString write SetString; default;
 
-    { ƒpƒ‰ƒ[ƒ^Šm”F—p }
+    { ãƒ‘ãƒ©ãƒ¡ãƒ¼ã‚¿ç¢ºèªç”¨ }
     property MaxLines: Integer read FMaxLines;
     property MaxLen: Integer read FMaxLen;
   end;
@@ -122,7 +124,7 @@ type
 implementation
 
 {----------------------------------------------}
-{               “à•”ƒ†[ƒeƒBƒŠƒeƒB              }
+{               å†…éƒ¨ãƒ¦ãƒ¼ãƒ†ã‚£ãƒªãƒ†ã‚£              }
 {----------------------------------------------}
 
 procedure TSharedMemoryBase.WriteInt(Dest: PInteger; const Value: Integer);
@@ -145,7 +147,7 @@ var
 begin
   if (FView = Pointer(0)) or (Dest = nil) or (MaxLen <= 0) then Exit;
 
-  // ãŒÀ - 1i#0 I’[•ªj‚ÅƒNƒŠƒbƒv
+  // ä¸Šé™ - 1ï¼ˆ#0 çµ‚ç«¯åˆ†ï¼‰ã§ã‚¯ãƒªãƒƒãƒ—
   L := Min(Length(Value), MaxLen - 1);
   if L > 0 then
     Move(Value[1], Dest^, L * SizeOf(WideChar));
@@ -175,7 +177,7 @@ begin
 end;
 
 {----------------------------------------------}
-{               ƒ}ƒbƒsƒ“ƒO§Œä                 }
+{               ãƒãƒƒãƒ”ãƒ³ã‚°åˆ¶å¾¡                 }
 {----------------------------------------------}
 
 function TSharedMemoryBase.Map: Boolean;
@@ -197,7 +199,7 @@ begin
 end;
 
 {----------------------------------------------}
-{                 ¶¬^”jŠü                   }
+{                 ç”Ÿæˆï¼ç ´æ£„                   }
 {----------------------------------------------}
 
 constructor TSharedMemoryBase.Create(const AName: string; ASize: Integer);
@@ -213,12 +215,12 @@ begin
   if (FName = '') or (FSize <= 0) then
     raise Exception.Create('Invalid shared memory parameters.');
 
-  // ‹¤—Lƒƒ‚ƒŠì¬iŠù‘¶‚È‚çÚ‘±j
+  // å…±æœ‰ãƒ¡ãƒ¢ãƒªä½œæˆï¼ˆæ—¢å­˜ãªã‚‰æ¥ç¶šï¼‰
   FHandle := CreateFileMapping(INVALID_HANDLE_VALUE, nil, PAGE_READWRITE, 0, Cardinal(FSize), PChar(FName));
   if FHandle = 0 then
     raise Exception.CreateFmt('Failed to create file mapping (%s).', [SysErrorMessage(GetLastError)]);
 
-  // Šù‘¶‚©‚Ç‚¤‚©
+  // æ—¢å­˜ã‹ã©ã†ã‹
   FIsOwner := (GetLastError <> ERROR_ALREADY_EXISTS);
 
   if not Map then
@@ -228,7 +230,7 @@ begin
     raise Exception.Create('Failed to map shared memory.');
   end;
 
-  // V‹Kì¬‚Ì‚İ‰Šú‰»
+  // æ–°è¦ä½œæˆæ™‚ã®ã¿åˆæœŸåŒ–
   if FIsOwner then
     ClearBuffer(FView, FSize);
 end;
@@ -326,13 +328,13 @@ begin
   FMaxLines := Max(AMaxLines, 1);
   FMaxLen   := Max(AMaxLen, 2);
 
-  // Count(Integer) + Lines[MaxLines, MaxLen] ‚Ì•ª‚ğŠm•Û
+  // Count(Integer) + Lines[MaxLines, MaxLen] ã®åˆ†ã‚’ç¢ºä¿
   inherited Create(
     AName,
     SizeOf(Integer) + (FMaxLines * (FMaxLen * SizeOf(WideChar)))
   );
 
-  // V‹Kì¬‚Ì‚İ‰Šú‰»
+  // æ–°è¦ä½œæˆæ™‚ã®ã¿åˆæœŸåŒ–
   if IsOwner then
     SetCount(0);
 end;
@@ -345,9 +347,9 @@ begin
   if (View = nil) then Exit;
 
   C := GetCount;
-  if (C >= FMaxLines) then Exit; // ãŒÀ
+  if (C >= FMaxLines) then Exit; // ä¸Šé™
 
-  // ’Ç‰Á
+  // è¿½åŠ 
   SetString(C, S);
   Inc(C);
   SetCount(C);

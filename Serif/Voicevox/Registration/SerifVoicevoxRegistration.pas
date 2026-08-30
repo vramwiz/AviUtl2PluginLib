@@ -1,4 +1,5 @@
-unit SerifVoicevoxRegistration;
+﻿unit SerifVoicevoxRegistration;
+
 
 interface
 

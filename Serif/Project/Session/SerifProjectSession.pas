@@ -1,4 +1,5 @@
-unit SerifProjectSession;
+﻿unit SerifProjectSession;
+
 
 interface
 

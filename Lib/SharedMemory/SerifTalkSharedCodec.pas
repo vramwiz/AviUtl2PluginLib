@@ -28,10 +28,10 @@ implementation
 
 uses
   System.Classes,
-  System.Math,
   System.StrUtils,
   System.SysUtils,
-  KeyValueText;
+  KeyValueText,
+  SerifSpeechSync;
 
 function TryParseLabInterval(const Line: string; out StartSec,
   EndSec: Double): Boolean;
@@ -67,15 +67,6 @@ begin
   Result := EndSec > StartSec;
 end;
 
-function LabCommand(const Line: string): string;
-var
-  Comma: Integer;
-begin
-  Result := Trim(Line);
-  Comma := LastDelimiter(',', Result);
-  if Comma > 0 then Result := Trim(Copy(Result, Comma + 1, MaxInt));
-end;
-
 function CurrentLabLine(const Lab: string; Sec, TotalTime: Double): string;
 var
   EndSec, StartSec: Double;
@@ -97,21 +88,6 @@ begin
   end;
 end;
 
-function IsSpeechActive(const HasLab: Boolean; const LabLine, Serif: string;
-  Sec, TotalTime: Double): Boolean;
-var
-  Command: string;
-begin
-  Result := Trim(Serif) <> '';
-  if not Result then Exit;
-  if not HasLab then
-    Exit((TotalTime <= 0) or ((Sec >= 0) and (Sec < TotalTime)));
-  Command := LabCommand(LabLine);
-  if (Command = '') or SameText(Command, 'Pause') then Exit(False);
-  if StartsText('vol:', Command) then
-    Exit(StrToIntDef(Trim(Copy(Command, 5, MaxInt)), 0) > 0);
-end;
-
 function EncodeSerifTalkFrame(const Value: TSerifTalkFrame): string;
 var
   HasLab, SpeechActive: Boolean;
@@ -122,11 +98,10 @@ begin
   if Value.FrameRate > 0 then Sec := Value.Frame / Value.FrameRate;
   HasLab := Trim(Value.Lab) <> '';
   LabLine := CurrentLabLine(Value.Lab, Sec, Value.TotalTime);
-  SpeechActive := IsSpeechActive(HasLab, LabLine, Value.Serif, Sec,
+  SpeechActive := IsSerifSpeechActive(HasLab, LabLine, Value.Serif, Sec,
     Value.TotalTime);
-  SpeechProgress := 0;
-  if Value.TotalTime > 0 then
-    SpeechProgress := EnsureRange(Sec / Value.TotalTime, 0.0, 1.0);
+  SpeechProgress := CalculateSerifSpeechProgressFromLab(Value.Lab, LabLine,
+    Sec, Value.TotalTime);
   Result := '';
   AddKeyValue(Result, 'uid', Value.UID);
   AddKeyValue(Result, 'source_object', IntToStr(Value.SourceObjectID));
