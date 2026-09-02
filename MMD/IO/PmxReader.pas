@@ -7,6 +7,8 @@ interface
 uses
   PmxModel;
 
+// PMXを新しいModelへ解析して返す。呼出側が返却Modelを所有する。
+function LoadPmxModel(const FileName: string): TPmxModel;
 // 絶対パス単位の共有キャッシュから不変Modelを返し、未読込時だけPMXを解析する。
 function GetCachedPmxModel(const FileName: string): TPmxModel;
 

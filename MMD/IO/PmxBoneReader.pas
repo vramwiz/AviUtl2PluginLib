@@ -150,7 +150,9 @@ begin
         raise EPmxFormatError.CreateFmt(
           'PMX vertex %d has invalid bone weight: %g',
           [I, Model.Vertices[I].BoneWeights[J]]);
-      if (Model.Vertices[I].BoneIndices[J] < 0) and
+      // ボーンを1本も持たない静的PMXでは、BDEF1の-1参照とWeight 1を
+      // 許可する。通常モデルでは従来どおり重み付き欠落参照を拒否する。
+      if (BoneCount > 0) and (Model.Vertices[I].BoneIndices[J] < 0) and
         (Model.Vertices[I].BoneWeights[J] > 0.0) then
         raise EPmxFormatError.CreateFmt(
           'PMX vertex %d has a weighted missing bone', [I]);

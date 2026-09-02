@@ -158,6 +158,13 @@ var
   TransformedNormal, TransformedPosition: TPmxVector3;
   Weight: Single;
 begin
+  // ボーン0件の静的アクセサリPMXはスキニングせず原形をそのまま使う。
+  if Length(Model.Bones) = 0 then
+  begin
+    Target.Position := SourcePosition;
+    Target.Normal := Source.Normal;
+    Exit;
+  end;
   case Source.DeformType of
     pdtBdef1: InfluenceCount := 1;
     pdtBdef2: InfluenceCount := 2;
