@@ -1,6 +1,6 @@
 ﻿unit MmdD3DShapes;
 
-// 骨格編集用の関節球と、選択・ホバー中の四角錐ボーンを生成する。
+// 骨格編集用の関節球を生成する。ボーン自体の選択色は線描画側が担当する。
 
 interface
 
@@ -91,79 +91,6 @@ begin
   end;
 end;
 
-procedure AppendTriangle(const A, B, C: TPmxVector3; R, G, Blue: Single;
-  var Vertices: TMmdPreviewVertices; var VertexIndex: Integer);
-var
-  Normal: TPmxVector3;
-begin
-  Normal := NormalizeVector(CrossVector(SubtractVector(B, A),
-    SubtractVector(C, A)));
-  SetShapeVertex(Vertices[VertexIndex], A, Normal, R, G, Blue);
-  Inc(VertexIndex);
-  SetShapeVertex(Vertices[VertexIndex], B, Normal, R, G, Blue);
-  Inc(VertexIndex);
-  SetShapeVertex(Vertices[VertexIndex], C, Normal, R, G, Blue);
-  Inc(VertexIndex);
-end;
-
-procedure AppendPyramid(const Segment: TMmdPreviewBoneSegment;
-  ModelHeight, R, G, B: Single; var Vertices: TMmdPreviewVertices;
-  var VertexIndex: Integer);
-var
-  Base: array[0..3] of TPmxVector3;
-  Direction, Reference, Right, Up: TPmxVector3;
-  BoneLength, Radius: Single;
-begin
-  Direction := SubtractVector(Segment.EndPosition, Segment.StartPosition);
-  BoneLength := Sqrt(DotVector(Direction, Direction));
-  if BoneLength <= 0.000001 then
-    Exit;
-  Direction := ScaleVector(Direction, 1.0 / BoneLength);
-  Reference := Default(TPmxVector3);
-  if Abs(Direction.Y) < 0.9 then
-    Reference.Y := 1.0
-  else
-    Reference.X := 1.0;
-  Right := NormalizeVector(CrossVector(Direction, Reference));
-  Up := NormalizeVector(CrossVector(Right, Direction));
-  Radius := EnsureRange(BoneLength * 0.14, ModelHeight * 0.006,
-    ModelHeight * 0.022);
-  Base[0] := AddVector(Segment.StartPosition,
-    AddVector(ScaleVector(Right, Radius), ScaleVector(Up, Radius)));
-  Base[1] := AddVector(Segment.StartPosition,
-    AddVector(ScaleVector(Right, -Radius), ScaleVector(Up, Radius)));
-  Base[2] := AddVector(Segment.StartPosition,
-    AddVector(ScaleVector(Right, -Radius), ScaleVector(Up, -Radius)));
-  Base[3] := AddVector(Segment.StartPosition,
-    AddVector(ScaleVector(Right, Radius), ScaleVector(Up, -Radius)));
-  AppendTriangle(Base[0], Base[1], Segment.EndPosition, R, G, B,
-    Vertices, VertexIndex);
-  AppendTriangle(Base[1], Base[2], Segment.EndPosition, R, G, B,
-    Vertices, VertexIndex);
-  AppendTriangle(Base[2], Base[3], Segment.EndPosition, R, G, B,
-    Vertices, VertexIndex);
-  AppendTriangle(Base[3], Base[0], Segment.EndPosition, R, G, B,
-    Vertices, VertexIndex);
-  AppendTriangle(Base[0], Base[3], Base[2], R, G, B, Vertices, VertexIndex);
-  AppendTriangle(Base[0], Base[2], Base[1], R, G, B, Vertices, VertexIndex);
-end;
-
-procedure AppendTargetPyramid(const Segments: TMmdPreviewBoneSegments;
-  const Target: TMmdPreviewTarget; ModelHeight, R, G, B: Single;
-  var Vertices: TMmdPreviewVertices; var VertexIndex: Integer);
-var
-  Segment: TMmdPreviewBoneSegment;
-begin
-  if Target.Kind <> ptBone then
-    Exit;
-  for Segment in Segments do
-    if Segment.BoneIndex = Target.BoneIndex then
-    begin
-      AppendPyramid(Segment, ModelHeight, R, G, B, Vertices, VertexIndex);
-      Exit;
-    end;
-end;
-
 procedure BuildPreviewBoneShapes(const Joints: TMmdPreviewJoints;
   const Segments: TMmdPreviewBoneSegments; const SelectedTarget,
   HoverTarget: TMmdPreviewTarget; ModelHeight: Single;
@@ -176,7 +103,7 @@ var
   Radius: Single;
   VertexIndex: Integer;
 begin
-  SetLength(Vertices, SPHERE_VERTEX_COUNT + 36);
+  SetLength(Vertices, SPHERE_VERTEX_COUNT);
   VertexIndex := 0;
   Radius := ModelHeight * 0.012;
   if SelectedTarget.Locked then
@@ -199,12 +126,6 @@ begin
         Vertices, VertexIndex);
       Break;
     end;
-  AppendTargetPyramid(Segments, SelectedTarget, ModelHeight,
-    R, G, B, Vertices, VertexIndex);
-  if (HoverTarget.Kind <> SelectedTarget.Kind) or
-    (HoverTarget.BoneIndex <> SelectedTarget.BoneIndex) then
-    AppendTargetPyramid(Segments, HoverTarget, ModelHeight,
-      1.0, 0.85, 0.15, Vertices, VertexIndex);
   SetLength(Vertices, VertexIndex);
 end;
 

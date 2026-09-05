@@ -244,13 +244,23 @@ end;
 
 procedure TDropFile.Detach(Control: TWinControl);
 var
+  ControlHandle: HWND;
   Info: TDropTargetInfo;
 begin
   Info := FindTarget(Control);
   if not Assigned(Info) then Exit;
 
   Control.WindowProc := Info.OriginalWndProc;
-  DragAcceptFiles(Control.Handle, False);
+
+  // The host can destroy its HWND before the VCL object during shutdown.
+  // Reading Handle in that state calls HandleNeeded and attempts to recreate
+  // the child window with an invalid parent.  Only detach an existing HWND.
+  if Control.HandleAllocated then
+  begin
+    ControlHandle := Control.Handle;
+    if IsWindow(ControlHandle) then
+      DragAcceptFiles(ControlHandle, False);
+  end;
 
   FTargets.Remove(Info);
   Log('Detached: ' + Control.Name);

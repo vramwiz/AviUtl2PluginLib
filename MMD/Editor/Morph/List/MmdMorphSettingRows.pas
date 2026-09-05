@@ -20,6 +20,9 @@ type
 
   TMmdMorphSettingRows = TArray<TMmdMorphSettingRow>;
 
+const
+  MMD_MORPH_PANEL_DISPLAY_ACCESSORY = 5;
+
 // PMXの並び順を維持し、分類値が変わる位置へ操作不能な見出し行を挿入する。
 procedure BuildMorphSettingRows(const Model: TPmxModel; out Rows: TMmdMorphSettingRows);
 
@@ -29,10 +32,10 @@ function FindSelectableMorphRow(const Rows: TMmdMorphSettingRows; StartRow, Dire
 // 表示行に対応するPMXモーフ番号を返す。見出し行または範囲外の場合は-1を返す。
 function MorphIndexAtSettingRow(const Rows: TMmdMorphSettingRows; RowIndex: Integer): Integer;
 
-// PMXの固定分類値を画面表示用名称へ変換し、未知値は「未分類」として扱う。
+// PMXの固定分類値と表示・アクセサリ分類を画面表示用名称へ変換する。
 function MorphPanelCaption(Panel: Byte): string;
 
-// PMXの眉・目・リップ・その他以外を、一覧内の未分類値0へ正規化する。
+// PMXの眉・目・リップ・その他と内部表示分類以外を未分類値0へ正規化する。
 function NormalizeMorphPanel(Panel: Byte): Byte;
 // モデル接続時のウェイト、操作方式、表示行、初期選択をまとめて初期化する。
 procedure InitializeMorphSettingRows(const Model: TPmxModel;
@@ -50,7 +53,10 @@ begin
   InitializeMorphWeights(Model, Weights);
   SetLength(Modes, Length(Weights));
   for Index := 0 to High(Modes) do
-    Modes[Index] := mcmContinuous;
+    if Model.Morphs[Index].MorphType = pmtMaterial then
+      Modes[Index] := mcmToggle
+    else
+      Modes[Index] := mcmContinuous;
   BuildMorphSettingRows(Model, Rows);
   ActiveRow := FindSelectableMorphRow(Rows, 0, 1);
 end;
@@ -68,7 +74,10 @@ begin
   PreviousPanel := $FF;
   for Index := 0 to High(Model.Morphs) do
   begin
-    Panel := NormalizeMorphPanel(Model.Morphs[Index].Panel);
+    if Model.Morphs[Index].MorphType = pmtMaterial then
+      Panel := MMD_MORPH_PANEL_DISPLAY_ACCESSORY
+    else
+      Panel := NormalizeMorphPanel(Model.Morphs[Index].Panel);
     if Panel <> PreviousPanel then
     begin
       Rows[RowIndex].Kind := msrkHeader;
@@ -111,6 +120,8 @@ begin
     2: Result := #$76EE;
     3: Result := #$30EA#$30C3#$30D7;
     4: Result := #$305D#$306E#$4ED6;
+    MMD_MORPH_PANEL_DISPLAY_ACCESSORY:
+      Result := #$8868#$793A#$30FB#$30A2#$30AF#$30BB#$30B5#$30EA;
   else
     Result := #$672A#$5206#$985E;
   end;
@@ -118,7 +129,7 @@ end;
 
 function NormalizeMorphPanel(Panel: Byte): Byte;
 begin
-  if Panel in [1, 2, 3, 4] then
+  if Panel in [1, 2, 3, 4, MMD_MORPH_PANEL_DISPLAY_ACCESSORY] then
     Result := Panel
   else
     Result := 0;

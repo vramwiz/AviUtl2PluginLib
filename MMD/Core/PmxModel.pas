@@ -64,6 +64,9 @@ type
     ParentIndex: Integer;
     DeformLayer: Integer;
     Flags: Word;
+    FixedAxis: TPmxVector3;
+    LocalAxisX: TPmxVector3;
+    LocalAxisZ: TPmxVector3;
     InheritParentIndex: Integer;
     InheritWeight: Single;
     IkTargetIndex: Integer;
@@ -102,6 +105,25 @@ type
     Rotation: TPmxVector4;
   end;
 
+  TPmxMaterialMorphOperation = (
+    pmmoMultiply,
+    pmmoAdd
+  );
+
+  TPmxMaterialMorphOffset = record
+    MaterialIndex: Integer;
+    Operation: TPmxMaterialMorphOperation;
+    Diffuse: TPmxVector4;
+    Specular: TPmxVector3;
+    SpecularStrength: Single;
+    Ambient: TPmxVector3;
+    EdgeColor: TPmxVector4;
+    EdgeSize: Single;
+    TextureTint: TPmxVector4;
+    SphereTint: TPmxVector4;
+    ToonTint: TPmxVector4;
+  end;
+
   TPmxMorph = record
     Name: string;
     Panel: Byte;
@@ -109,6 +131,7 @@ type
     GroupOffsets: TArray<TPmxGroupMorphOffset>;
     VertexOffsets: TArray<TPmxVertexMorphOffset>;
     BoneOffsets: TArray<TPmxBoneMorphOffset>;
+    MaterialOffsets: TArray<TPmxMaterialMorphOffset>;
   end;
 
 const

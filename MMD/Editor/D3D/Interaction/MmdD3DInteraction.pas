@@ -23,6 +23,11 @@ procedure ApplyFixedPreviewView(var Camera: TMmdPreviewCamera;
 function BoneDragLocalRotation(const StartDirection, ModelDelta: TPmxVector3;
   const ParentFrameRotation, StartLocalRotation: TPmxQuaternion;
   Axis: TMmdDragAxis; HorizontalPixels: Single): TPmxQuaternion;
+// PMXボーンの固定軸・ローカル座標を使い、モデル固有の操作軸に沿った回転を返す。
+function BoneDragLocalRotationForBone(const Bone: TPmxBone;
+  const StartDirection, ModelDelta: TPmxVector3;
+  const ParentFrameRotation, StartLocalRotation: TPmxQuaternion;
+  Axis: TMmdDragAxis; HorizontalPixels: Single): TPmxQuaternion;
 // ドラッグ開始時からの回転差を、指定したラジアン刻みへ吸着させる。
 function SnapLocalRotation(const StartRotation,
   CurrentRotation: TPmxQuaternion; StepRadians: Single): TPmxQuaternion;
@@ -202,6 +207,90 @@ begin
   end;
   Result := NormalizeQuaternion(MultiplyQuaternion(
     QuaternionFromAxisAngle(AxisLocal, Angle), StartLocalRotation));
+end;
+
+function BoneDragAroundAxis(const AxisLocal: TPmxVector3;
+  const StartLocalRotation: TPmxQuaternion;
+  HorizontalPixels: Single): TPmxQuaternion;
+const
+  ROTATION_RADIANS_PER_PIXEL = 0.01;
+begin
+  Result := NormalizeQuaternion(MultiplyQuaternion(
+    QuaternionFromAxisAngle(NormalizeVector(AxisLocal),
+      HorizontalPixels * ROTATION_RADIANS_PER_PIXEL), StartLocalRotation));
+end;
+
+function BoneDragWithLocalAxes(const StartDirection, ModelDelta: TPmxVector3;
+  const ParentFrameRotation, StartLocalRotation: TPmxQuaternion;
+  const BoneX, BoneY, BoneZ: TPmxVector3; Axis: TMmdDragAxis;
+  HorizontalPixels: Single): TPmxQuaternion;
+var
+  AxisLocal, FromProjected, StartLocalDirection, TargetDirection,
+    TargetLocalDirection: TPmxVector3;
+  Angle, CosAngle, SinAngle: Single;
+begin
+  if Axis = daFree then
+    Exit(JointDragLocalRotation(StartDirection, ModelDelta,
+      ParentFrameRotation, StartLocalRotation));
+  case Axis of
+    daX: AxisLocal := BoneX;
+    daY: Exit(BoneDragAroundAxis(BoneY, StartLocalRotation,
+      HorizontalPixels));
+    daZ: AxisLocal := BoneZ;
+  else
+    AxisLocal := BoneY;
+  end;
+  StartLocalDirection := NormalizeVector(RotateVector(
+    InverseQuaternion(ParentFrameRotation), StartDirection));
+  TargetDirection := NormalizeVector(AddVector(StartDirection, ModelDelta));
+  if DotVector(TargetDirection, TargetDirection) <= 0.000001 then
+    Exit(StartLocalRotation);
+  TargetLocalDirection := NormalizeVector(RotateVector(
+    InverseQuaternion(ParentFrameRotation), TargetDirection));
+  FromProjected := ProjectPerpendicular(StartLocalDirection, AxisLocal);
+  TargetLocalDirection := ProjectPerpendicular(TargetLocalDirection, AxisLocal);
+  if (DotVector(FromProjected, FromProjected) <= 0.000001) or
+    (DotVector(TargetLocalDirection, TargetLocalDirection) <= 0.000001) then
+    Exit(StartLocalRotation);
+  FromProjected := NormalizeVector(FromProjected);
+  TargetLocalDirection := NormalizeVector(TargetLocalDirection);
+  CosAngle := EnsureRange(DotVector(FromProjected, TargetLocalDirection),
+    -1.0, 1.0);
+  SinAngle := DotVector(AxisLocal,
+    CrossVector(FromProjected, TargetLocalDirection));
+  Angle := ArcTan2(SinAngle, CosAngle);
+  Result := NormalizeQuaternion(MultiplyQuaternion(
+    QuaternionFromAxisAngle(AxisLocal, Angle), StartLocalRotation));
+end;
+
+function BoneDragLocalRotationForBone(const Bone: TPmxBone;
+  const StartDirection, ModelDelta: TPmxVector3;
+  const ParentFrameRotation, StartLocalRotation: TPmxQuaternion;
+  Axis: TMmdDragAxis; HorizontalPixels: Single): TPmxQuaternion;
+var
+  BoneX, BoneY, BoneZ: TPmxVector3;
+begin
+  if ((Bone.Flags and PMX_BONE_FLAG_FIXED_AXIS) <> 0) and
+    (DotVector(Bone.FixedAxis, Bone.FixedAxis) > 0.000001) then
+    Exit(BoneDragAroundAxis(Bone.FixedAxis, StartLocalRotation,
+      HorizontalPixels));
+  if ((Bone.Flags and PMX_BONE_FLAG_LOCAL_COORDINATE) = 0) or
+    (DotVector(Bone.LocalAxisX, Bone.LocalAxisX) <= 0.000001) or
+    (DotVector(Bone.LocalAxisZ, Bone.LocalAxisZ) <= 0.000001) then
+    Exit(BoneDragLocalRotation(StartDirection, ModelDelta,
+      ParentFrameRotation, StartLocalRotation, Axis, HorizontalPixels));
+  // PMXのローカルXはボーン長手方向なので、従来UIのローカルYへ対応させる。
+  BoneY := NormalizeVector(Bone.LocalAxisX);
+  BoneZ := ProjectPerpendicular(Bone.LocalAxisZ, BoneY);
+  if DotVector(BoneZ, BoneZ) <= 0.000001 then
+    Exit(BoneDragLocalRotation(StartDirection, ModelDelta,
+      ParentFrameRotation, StartLocalRotation, Axis, HorizontalPixels));
+  BoneZ := NormalizeVector(BoneZ);
+  BoneX := NormalizeVector(CrossVector(BoneY, BoneZ));
+  BoneZ := NormalizeVector(CrossVector(BoneX, BoneY));
+  Result := BoneDragWithLocalAxes(StartDirection, ModelDelta,
+    ParentFrameRotation, StartLocalRotation, BoneX, BoneY, BoneZ, Axis,
+    HorizontalPixels);
 end;
 
 function SnapLocalRotation(const StartRotation,

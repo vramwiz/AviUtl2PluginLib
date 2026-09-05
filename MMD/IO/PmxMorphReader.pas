@@ -8,7 +8,7 @@ uses
   PmxBinaryStream,
   PmxModel;
 
-// 全モーフを読み、頂点・ボーン・グループ変位を保持して参照範囲を検証する。
+// 全モーフを読み、頂点・ボーン・グループ・材質変位を保持して参照範囲を検証する。
 procedure ReadPmxMorphs(Stream: TPmxBinaryStream; Model: TPmxModel);
 
 implementation
@@ -70,6 +70,41 @@ begin
   end;
 end;
 
+procedure ReadMaterialOffsets(Stream: TPmxBinaryStream; Model: TPmxModel;
+  var Morph: TPmxMorph; OffsetCount: Integer);
+var
+  I: Integer;
+  OperationValue: Byte;
+begin
+  SetLength(Morph.MaterialOffsets, OffsetCount);
+  for I := 0 to OffsetCount - 1 do
+  begin
+    Morph.MaterialOffsets[I].MaterialIndex :=
+      Stream.ReadSignedIndex(Stream.MaterialIndexSize);
+    if Morph.MaterialOffsets[I].MaterialIndex < -1 then
+      raise EPmxFormatError.CreateFmt('PMX morph material index is out of range: %d',
+        [Morph.MaterialOffsets[I].MaterialIndex]);
+    if Morph.MaterialOffsets[I].MaterialIndex >= Length(Model.Materials) then
+      CheckReference(Morph.MaterialOffsets[I].MaterialIndex,
+        Length(Model.Materials), 'morph material index');
+    OperationValue := Stream.ReadByte;
+    if OperationValue > Byte(Ord(High(TPmxMaterialMorphOperation))) then
+      raise EPmxFormatError.CreateFmt(
+        'Unsupported PMX material morph operation: %d', [OperationValue]);
+    Morph.MaterialOffsets[I].Operation :=
+      TPmxMaterialMorphOperation(OperationValue);
+    Morph.MaterialOffsets[I].Diffuse := Stream.ReadVector4;
+    Morph.MaterialOffsets[I].Specular := Stream.ReadVector3;
+    Morph.MaterialOffsets[I].SpecularStrength := Stream.ReadSingle;
+    Morph.MaterialOffsets[I].Ambient := Stream.ReadVector3;
+    Morph.MaterialOffsets[I].EdgeColor := Stream.ReadVector4;
+    Morph.MaterialOffsets[I].EdgeSize := Stream.ReadSingle;
+    Morph.MaterialOffsets[I].TextureTint := Stream.ReadVector4;
+    Morph.MaterialOffsets[I].SphereTint := Stream.ReadVector4;
+    Morph.MaterialOffsets[I].ToonTint := Stream.ReadVector4;
+  end;
+end;
+
 procedure SkipOffsets(Stream: TPmxBinaryStream; MorphType: TPmxMorphType;
   OffsetCount: Integer);
 var
@@ -82,11 +117,6 @@ begin
         begin
           Stream.ReadVertexIndex;
           Stream.Skip(4 * SizeOf(Single));
-        end;
-      pmtMaterial:
-        begin
-          Stream.ReadSignedIndex(Stream.MaterialIndexSize);
-          Stream.Skip(1 + 28 * SizeOf(Single));
         end;
       pmtImpulse:
         begin
@@ -134,6 +164,8 @@ begin
         ReadVertexOffsets(Stream, Model, Model.Morphs[I], OffsetCount);
       pmtBone:
         ReadBoneOffsets(Stream, Model, Model.Morphs[I], OffsetCount);
+      pmtMaterial:
+        ReadMaterialOffsets(Stream, Model, Model.Morphs[I], OffsetCount);
     else
       SkipOffsets(Stream, Model.Morphs[I].MorphType, OffsetCount);
     end;

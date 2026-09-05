@@ -43,7 +43,9 @@ begin
   EffectivePoses[BoneIndex] := InputPoses[BoneIndex];
   EffectivePoses[BoneIndex].Rotation := NormalizeQuaternion(
     EffectivePoses[BoneIndex].Rotation);
-  if ((Bone.Flags and PMX_BONE_FLAG_LOCAL_APPEND) <> 0) and
+  // 通常付与は付与元のユーザー変形・IK・多重付与後のローカル量を使う。
+  // 親子で共有するグローバル回転を再度加えると捩り分散骨が過回転する。
+  if ((Bone.Flags and PMX_BONE_FLAG_LOCAL_APPEND) = 0) and
     ((Bone.Flags and (PMX_BONE_FLAG_INHERIT_ROTATION or
       PMX_BONE_FLAG_INHERIT_TRANSLATION)) <> 0) then
   begin
@@ -94,7 +96,8 @@ begin
       States);
     ParentRotation := Transforms[ParentIndex].Rotation;
   end;
-  if ((Bone.Flags and PMX_BONE_FLAG_LOCAL_APPEND) = 0) and
+  // ローカル付与フラグ時だけ、付与元の変形を対象親座標へ戻して合成する。
+  if ((Bone.Flags and PMX_BONE_FLAG_LOCAL_APPEND) <> 0) and
     ((Bone.Flags and (PMX_BONE_FLAG_INHERIT_ROTATION or
       PMX_BONE_FLAG_INHERIT_TRANSLATION)) <> 0) then
   begin

@@ -19,6 +19,9 @@ function FindMorphIndex(const Model: TPmxModel; const MorphName: string): Intege
 // グループ・フリップ参照を再帰展開し、実際に適用するモーフ別係数へ変換する。
 procedure ResolveMorphWeights(const Model: TPmxModel; const Input: TPmxMorphWeights;
   var Effective: TPmxMorphWeights);
+// 材質モーフを基礎材質のコピーへ適用する。共有Model自体は変更しない。
+procedure ResolveMorphMaterials(const Model: TPmxModel;
+  const Weights: TPmxMorphWeights; out Materials: TArray<TPmxMaterial>);
 // 入力またはグループ・フリップ展開先に、指定表示枠の有効モーフがあればTrueを返す。
 function MorphWeightsUsePanel(const Model: TPmxModel;
   const Weights: TPmxMorphWeights; Panel: Byte): Boolean;
@@ -86,6 +89,66 @@ begin
   SetLength(Stack, Length(Model.Morphs));
   for I := 0 to Min(High(Input), High(Model.Morphs)) do
     ExpandMorph(Model, I, Input[I], Stack, Effective);
+end;
+
+function MorphMultiply(BaseValue, MorphValue, Weight: Single): Single;
+begin
+  Result := BaseValue * (1.0 + (MorphValue - 1.0) * Weight);
+end;
+
+procedure ApplyMaterialOffset(var Material: TPmxMaterial;
+  const Offset: TPmxMaterialMorphOffset; Weight: Single);
+begin
+  if Offset.Operation = pmmoMultiply then
+  begin
+    Material.Diffuse.X := MorphMultiply(Material.Diffuse.X, Offset.Diffuse.X,
+      Weight);
+    Material.Diffuse.Y := MorphMultiply(Material.Diffuse.Y, Offset.Diffuse.Y,
+      Weight);
+    Material.Diffuse.Z := MorphMultiply(Material.Diffuse.Z, Offset.Diffuse.Z,
+      Weight);
+    Material.Diffuse.W := MorphMultiply(Material.Diffuse.W, Offset.Diffuse.W,
+      Weight);
+    Material.SpecularStrength := MorphMultiply(Material.SpecularStrength,
+      Offset.SpecularStrength, Weight);
+  end
+  else
+  begin
+    Material.Diffuse.X := Material.Diffuse.X + Offset.Diffuse.X * Weight;
+    Material.Diffuse.Y := Material.Diffuse.Y + Offset.Diffuse.Y * Weight;
+    Material.Diffuse.Z := Material.Diffuse.Z + Offset.Diffuse.Z * Weight;
+    Material.Diffuse.W := Material.Diffuse.W + Offset.Diffuse.W * Weight;
+    Material.SpecularStrength := Material.SpecularStrength +
+      Offset.SpecularStrength * Weight;
+  end;
+end;
+
+procedure ResolveMorphMaterials(const Model: TPmxModel;
+  const Weights: TPmxMorphWeights; out Materials: TArray<TPmxMaterial>);
+var
+  Effective: TPmxMorphWeights;
+  I, MaterialIndex: Integer;
+  Offset: TPmxMaterialMorphOffset;
+begin
+  if Model = nil then
+  begin
+    Materials := nil;
+    Exit;
+  end;
+  Materials := Copy(Model.Materials);
+  ResolveMorphWeights(Model, Weights, Effective);
+  for I := 0 to High(Model.Morphs) do
+    if (Model.Morphs[I].MorphType = pmtMaterial) and
+      (Abs(Effective[I]) > 0.000001) then
+      for Offset in Model.Morphs[I].MaterialOffsets do
+        if Offset.MaterialIndex = -1 then
+        begin
+          for MaterialIndex := 0 to High(Materials) do
+            ApplyMaterialOffset(Materials[MaterialIndex], Offset, Effective[I]);
+        end
+        else if Offset.MaterialIndex < Length(Materials) then
+          ApplyMaterialOffset(Materials[Offset.MaterialIndex], Offset,
+            Effective[I]);
 end;
 
 function MorphWeightsUsePanel(const Model: TPmxModel;

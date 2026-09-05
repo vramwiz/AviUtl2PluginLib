@@ -40,6 +40,7 @@ type
   public
     // 子ウィンドウ生成前のカメラ、選択値、背景描画属性を初期化する。
     constructor Create(AOwner: TComponent); override;
+    // Rendererと子ウィンドウに結び付いたD3D資源を解放する。
     destructor Destroy; override;
     // 保存対象外の確認用モーフ係数を設定し、モデル本体を再構築する。
     procedure SetMorphWeights(const AWeights: TPmxMorphWeights);

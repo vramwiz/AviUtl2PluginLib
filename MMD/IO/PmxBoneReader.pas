@@ -45,11 +45,11 @@ begin
     Bone.InheritWeight := Stream.ReadSingle;
   end;
   if (Bone.Flags and PMX_BONE_FLAG_FIXED_AXIS) <> 0 then
-    Stream.ReadVector3;
+    Bone.FixedAxis := Stream.ReadVector3;
   if (Bone.Flags and PMX_BONE_FLAG_LOCAL_COORDINATE) <> 0 then
   begin
-    Stream.ReadVector3;
-    Stream.ReadVector3;
+    Bone.LocalAxisX := Stream.ReadVector3;
+    Bone.LocalAxisZ := Stream.ReadVector3;
   end;
   if (Bone.Flags and PMX_BONE_FLAG_EXTERNAL_PARENT) <> 0 then
     Stream.ReadInt32;
@@ -108,6 +108,13 @@ begin
       if IsNan(Bone.InheritWeight) or IsInfinite(Bone.InheritWeight) then
         raise EPmxFormatError.Create('PMX inherit weight is not finite');
     end;
+    if ((Bone.Flags and PMX_BONE_FLAG_FIXED_AXIS) <> 0) and
+      not IsFiniteVector(Bone.FixedAxis) then
+      raise EPmxFormatError.Create('PMX fixed axis is not finite');
+    if ((Bone.Flags and PMX_BONE_FLAG_LOCAL_COORDINATE) <> 0) and
+      (not IsFiniteVector(Bone.LocalAxisX) or
+      not IsFiniteVector(Bone.LocalAxisZ)) then
+      raise EPmxFormatError.Create('PMX local coordinate axes are not finite');
     if (Bone.Flags and PMX_BONE_FLAG_IK) <> 0 then
     begin
       if (Bone.IkTargetIndex < 0) or (Bone.IkTargetIndex >= BoneCount) then

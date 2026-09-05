@@ -29,6 +29,7 @@ type
     function HitTest(const Projection: TMmdPreviewProjection;
       const Camera: TMmdPreviewCamera; ViewWidth, ViewHeight,
       X, Y: Integer): TMmdPreviewTarget;
+    // 描画可能な骨格線または選択形状を保持しているか返す。
     function HasVertices: Boolean;
   end;
 

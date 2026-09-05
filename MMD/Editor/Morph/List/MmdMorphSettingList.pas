@@ -344,8 +344,6 @@ begin
     Exit;
   AssignMorphWeights(FModel, Weights, FWeights);
   Invalidate;
-  if Assigned(FOnChange) then
-    FOnChange(Self);
 end;
 
 procedure TMmdMorphSettingList.SetWeightFromX(Index, X: Integer);
@@ -390,6 +388,10 @@ end;
 procedure TMmdMorphSettingList.ToggleMode(Index: Integer);
 begin
   if (Index < 0) or (Index >= Length(FModes)) then
+    Exit;
+  // 材質モーフは表示物のON/OFFとして扱い、連続値へ切り替えない。
+  if Assigned(FModel) and
+    (FModel.Morphs[Index].MorphType = pmtMaterial) then
     Exit;
   ToggleMorphControlMode(FModes[Index], FWeights[Index]);
   Invalidate;

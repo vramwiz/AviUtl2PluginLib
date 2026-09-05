@@ -69,7 +69,7 @@ type
 
 function IsPreviewMorphSupported(MorphType: TPmxMorphType): Boolean;
 begin
-  Result := MorphType in [pmtGroup, pmtVertex, pmtBone, pmtFlip];
+  Result := MorphType in [pmtGroup, pmtVertex, pmtBone, pmtMaterial, pmtFlip];
 end;
 
 constructor TMmdMorphPreviewPanel.Create(AOwner: TComponent);

@@ -22,6 +22,7 @@ type
   public
     // 指定した子ウィンドウ専用のDeviceとSwapChainを生成する。失敗内容はErrorTextへ保持する。
     constructor Create(Window: HWND; Width, Height: Integer);
+    // 子ウィンドウ専用のD3D資源を解放する。
     destructor Destroy; override;
     // 保持中のGPUバッファを現在のRenderTargetへ描画してPresentする。
     procedure Render;

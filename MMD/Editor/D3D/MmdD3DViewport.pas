@@ -11,11 +11,12 @@ uses
   Vcl.Graphics,
   PmxModel,
   PmxPose,
+  MmdD3DReferenceImage,
+  MmdD3DViewportInputState,
   MmdD3DScene,
   MmdD3DViewportSurface;
 
 type
-  TMmdPressedViewKeys = set of Byte;
   TMmdD3DViewport = class(TMmdD3DViewportSurface)
   private
     FDragDirection: TPmxVector3;
@@ -26,9 +27,8 @@ type
     FDragStartLocalRotation: TPmxQuaternion;
     FDragging: Boolean;
     FCameraRotating: Boolean;
-    FLastFixedViewKey: Word;
+    FInputState: TMmdD3DViewportInputState;
     FLastMouse: TPoint;
-    FLockedBones: array of Boolean;
     FReadOnly: Boolean;
     FMouseDown: TPoint;
     FMouseDownTarget: TMmdPreviewTarget;
@@ -40,14 +40,10 @@ type
     FOnPoseChanged: TNotifyEvent;
     FOnPoseEditFinished: TNotifyEvent;
     FOnPoseEditStarted: TNotifyEvent;
-    FPressedViewKeys: TMmdPressedViewKeys;
-    FFixedViewOpposite: Boolean;
-    FReferenceImage: Vcl.Graphics.TBitmap;
-    procedure DrawReferenceImage;
+    FReferenceImage: TMmdD3DReferenceImage;
     procedure BeginTargetDrag(const Target: TMmdPreviewTarget);
     function GetSelectedBoneLocked: Boolean;
     procedure SelectTarget(const Target: TMmdPreviewTarget);
-    procedure SetFixedView(Key: Word);
     procedure ToggleSelectedBoneLock;
   protected
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
@@ -68,9 +64,11 @@ type
     procedure CopyPoses(out APoses: TPmxBonePoses);
     // 貼り付け画像をフォーム内の独立コピーとして保持し、半透明で重ねる。
     procedure SetReferenceImage(Bitmap: Vcl.Graphics.TBitmap);
+    // 保持中の参照画像が描画可能な寸法を持つか返す。
     function HasReferenceImage: Boolean;
     // 参照画像を現在のViewportと同じ寸法・投影基準へ変換してコピーする。
     procedure CopyReferenceImageForViewport(Bitmap: Vcl.Graphics.TBitmap);
+    // 指定ボーンが入力操作の固定対象か返す。範囲外の番号はFalseとする。
     function IsBoneLocked(BoneIndex: Integer): Boolean;
     property SelectedBoneLocked: Boolean read GetSelectedBoneLocked;
     property ReadOnly: Boolean read FReadOnly write FReadOnly;
@@ -98,7 +96,8 @@ uses
 constructor TMmdD3DViewport.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  FReferenceImage := Vcl.Graphics.TBitmap.Create;
+  FReferenceImage := TMmdD3DReferenceImage.Create;
+  FInputState := TMmdD3DViewportInputState.Create;
   FSelectedBone := -1;
   FMouseDownTarget := EmptyPreviewTarget;
   FDragMirrorBone := -1;
@@ -111,68 +110,44 @@ begin
   TabStop := True;
 end;
 
-procedure TMmdD3DViewport.SetFixedView(Key: Word);
+procedure TMmdD3DViewport.KeyDown(var Key: Word; Shift: TShiftState);
 var
+  ApplyView, ToggleLock: Boolean;
   View: TMmdFixedView;
 begin
-  if Key = FLastFixedViewKey then
-    FFixedViewOpposite := not FFixedViewOpposite
-  else
-  begin
-    FLastFixedViewKey := Key;
-    FFixedViewOpposite := False;
-  end;
-  case Key of
-    Ord('A'): View := fvFront;
-    Ord('S'): View := fvSide;
-    Ord('D'): View := fvVertical;
-  else
-    Exit;
-  end;
-  ApplyFixedPreviewView(FCamera, View, FFixedViewOpposite);
-  UpdateCamera;
-end;
-
-procedure TMmdD3DViewport.KeyDown(var Key: Word; Shift: TShiftState);
-begin
   inherited KeyDown(Key, Shift);
-  if FTargetDragging or
-    not (Key in [Ord('A'), Ord('S'), Ord('D'), Ord('L')]) then
+  if not FInputState.KeyDown(Key, FTargetDragging, View, ApplyView,
+    ToggleLock) then
     Exit;
-  if Byte(Key) in FPressedViewKeys then
-  begin
-    Key := 0;
-    Exit;
-  end;
-  Include(FPressedViewKeys, Byte(Key));
-  if Key = Ord('L') then
+  if ToggleLock then
     ToggleSelectedBoneLock
-  else
-    SetFixedView(Key);
+  else if ApplyView then
+  begin
+    ApplyFixedPreviewView(FCamera, View, FInputState.FixedViewOpposite);
+    UpdateCamera;
+  end;
   Key := 0;
 end;
 
 procedure TMmdD3DViewport.KeyUp(var Key: Word; Shift: TShiftState);
 begin
-  if Key in [Ord('A'), Ord('S'), Ord('D'), Ord('L')] then
-    Exclude(FPressedViewKeys, Byte(Key));
+  FInputState.KeyUp(Key);
   inherited KeyUp(Key, Shift);
 end;
 
 function TMmdD3DViewport.GetSelectedBoneLocked: Boolean;
 begin
   Result := (FSelectedBone >= 0) and
-    (FSelectedBone < Length(FLockedBones)) and FLockedBones[FSelectedBone];
+    FInputState.IsBoneLocked(FSelectedBone);
 end;
 
 procedure TMmdD3DViewport.ToggleSelectedBoneLock;
 begin
   if FReadOnly then
     Exit;
-  if (FSelectedBone < 0) or (FSelectedBone >= Length(FLockedBones)) then
+  if FSelectedBone < 0 then
     Exit;
-  FLockedBones[FSelectedBone] := not FLockedBones[FSelectedBone];
-  FSelectedTarget.Locked := FLockedBones[FSelectedBone];
+  FSelectedTarget.Locked := FInputState.ToggleBoneLock(FSelectedBone);
   RebuildSkeleton;
 end;
 
@@ -181,9 +156,7 @@ var
   Selected: TMmdPreviewTarget;
 begin
   Selected := Target;
-  Selected.Locked := (Selected.JointIndex >= 0) and
-    (Selected.JointIndex < Length(FLockedBones)) and
-    FLockedBones[Selected.JointIndex];
+  Selected.Locked := FInputState.IsBoneLocked(Selected.JointIndex);
   if (Selected.Kind = FSelectedTarget.Kind) and
     (Selected.JointIndex = FSelectedTarget.JointIndex) and
     (Selected.BoneIndex = FSelectedTarget.BoneIndex) and
@@ -222,14 +195,12 @@ begin
     Exit;
   if (PoseBoneIndex < 0) or (EndJointIndex < 0) then
     Exit;
-  if (PoseBoneIndex < Length(FLockedBones)) and FLockedBones[PoseBoneIndex] then
+  if FInputState.IsBoneLocked(PoseBoneIndex) then
     Exit;
   if FSymmetricEditing then
   begin
     FDragMirrorBone := FindSymmetricBone(FModel, PoseBoneIndex);
-    if (FDragMirrorBone >= 0) and
-      (FDragMirrorBone < Length(FLockedBones)) and
-      FLockedBones[FDragMirrorBone] then
+    if FInputState.IsBoneLocked(FDragMirrorBone) then
       FDragMirrorBone := -1;
   end;
   CalculateBoneTransforms(FModel, FPoses, Transforms);
@@ -294,9 +265,9 @@ begin
     end;
     ModelDelta := PreviewScreenDeltaToModel(X - FMouseDown.X,
       Y - FMouseDown.Y, FDragProjection, FCamera, ClientWidth, ClientHeight);
-    Rotation := BoneDragLocalRotation(FDragDirection,
-      ModelDelta, FDragParentFrameRotation, FDragStartLocalRotation,
-      ActivePreviewDragAxis, X - FMouseDown.X);
+    Rotation := BoneDragLocalRotationForBone(FModel.Bones[FDragPoseBone],
+      FDragDirection, ModelDelta, FDragParentFrameRotation,
+      FDragStartLocalRotation, ActivePreviewDragAxis, X - FMouseDown.X);
     if GetKeyState(Ord('G')) < 0 then
       Rotation := SnapLocalRotation(FDragStartLocalRotation, Rotation,
         DegToRad(5));
@@ -378,85 +349,37 @@ end;
 
 destructor TMmdD3DViewport.Destroy;
 begin
+  FInputState.Free;
   FReferenceImage.Free;
   inherited Destroy;
 end;
 
 function TMmdD3DViewport.HasReferenceImage: Boolean;
 begin
-  Result := (FReferenceImage.Width > 0) and (FReferenceImage.Height > 0);
+  Result := FReferenceImage.HasImage;
 end;
 
 function TMmdD3DViewport.IsBoneLocked(BoneIndex: Integer): Boolean;
 begin
-  Result := (BoneIndex >= 0) and (BoneIndex < Length(FLockedBones)) and
-    FLockedBones[BoneIndex];
+  Result := FInputState.IsBoneLocked(BoneIndex);
 end;
 
 procedure TMmdD3DViewport.SetReferenceImage(Bitmap: Vcl.Graphics.TBitmap);
 begin
-  if Bitmap = nil then
-    FReferenceImage.SetSize(0, 0)
-  else
-    FReferenceImage.Assign(Bitmap);
+  FReferenceImage.SetImage(Bitmap);
   Invalidate;
 end;
 
 procedure TMmdD3DViewport.CopyReferenceImageForViewport(
   Bitmap: Vcl.Graphics.TBitmap);
-var
-  DestLeft, DestWidth: Integer;
 begin
-  Bitmap.PixelFormat := pf32bit;
-  Bitmap.SetSize(ClientWidth, ClientHeight);
-  Bitmap.Canvas.Brush.Color := RGB(14, 15, 19);
-  Bitmap.Canvas.FillRect(Rect(0, 0, Bitmap.Width, Bitmap.Height));
-  if not HasReferenceImage or (ClientHeight <= 0) then
-    Exit;
-  DestWidth := MulDiv(FReferenceImage.Width, ClientHeight,
-    FReferenceImage.Height);
-  DestLeft := (ClientWidth - DestWidth) div 2;
-  Bitmap.Canvas.StretchDraw(Rect(DestLeft, 0, DestLeft + DestWidth,
-    ClientHeight), FReferenceImage);
-end;
-
-procedure TMmdD3DViewport.DrawReferenceImage;
-const
-  REFERENCE_ALPHA = 112;
-var
-  Blend: TBlendFunction;
-  DestLeft, DestWidth: Integer;
-  OldBitmap: HGDIOBJ;
-  SourceDC: HDC;
-begin
-  if not HasReferenceImage or (ClientHeight <= 0) then
-    Exit;
-  // 投影上のモデル寸法はViewport高さに比例するため、参照画像も高さ基準で
-  // 拡大縮小する。横幅差は中央寄せし、縦横比を変えない。
-  DestWidth := MulDiv(FReferenceImage.Width, ClientHeight,
-    FReferenceImage.Height);
-  DestLeft := (ClientWidth - DestWidth) div 2;
-  SourceDC := CreateCompatibleDC(Canvas.Handle);
-  if SourceDC = 0 then
-    Exit;
-  OldBitmap := SelectObject(SourceDC, FReferenceImage.Handle);
-  try
-    Blend.BlendOp := AC_SRC_OVER;
-    Blend.BlendFlags := 0;
-    Blend.SourceConstantAlpha := REFERENCE_ALPHA;
-    Blend.AlphaFormat := 0;
-    AlphaBlend(Canvas.Handle, DestLeft, 0, DestWidth, ClientHeight,
-      SourceDC, 0, 0, FReferenceImage.Width, FReferenceImage.Height, Blend);
-  finally
-    SelectObject(SourceDC, OldBitmap);
-    DeleteDC(SourceDC);
-  end;
+  FReferenceImage.CopyForViewport(Bitmap, ClientWidth, ClientHeight);
 end;
 
 procedure TMmdD3DViewport.Paint;
 begin
   inherited Paint;
-  DrawReferenceImage;
+  FReferenceImage.Draw(Canvas, ClientWidth, ClientHeight);
 end;
 
 function TMmdD3DViewport.DoMouseWheel(Shift: TShiftState;
@@ -473,9 +396,10 @@ procedure TMmdD3DViewport.SetScene(AModel: TPmxModel;
 begin
   if AModel <> FModel then
   begin
-    SetLength(FLockedBones, 0);
-    if AModel <> nil then
-      SetLength(FLockedBones, Length(AModel.Bones));
+    if AModel = nil then
+      FInputState.ResetBoneLocks(0)
+    else
+      FInputState.ResetBoneLocks(Length(AModel.Bones));
   end;
   FModel := AModel;
   FPoses := Copy(APoses);

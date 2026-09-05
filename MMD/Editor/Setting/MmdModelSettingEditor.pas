@@ -22,6 +22,8 @@ uses
 
 type
   TMmdModelSettingPage = (mspPose, mspExpression, mspEyeBlink, mspLipSync);
+  TMmdExpressionDataChangedEvent = procedure(Sender: TObject;
+    const ExpressionData: string) of object;
 
   TMmdModelSettingEditorForm = class(TStandardPoseEditorForm)
   private
@@ -30,10 +32,12 @@ type
     FEyeBlinkPanel: TMmdEyeBlinkSettingPanel;
     FExpressionWeights: TPmxMorphWeights;
     FLipSyncPanel: TMmdLipSyncSettingPanel;
-    FModeButtons: array[TMmdModelSettingPage] of TToolButton;
+    FModeButtons: TArray<TToolButton>;
     FModeImages: TImageList;
     FModeToolbar: TToolBar;
+    FOnExpressionDataChanged: TMmdExpressionDataChangedEvent;
     FSaveButton: TMmdDarkButton;
+    procedure ExpressionWeightsChanged(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure EyeBlinkSettingChanged(Sender: TObject);
@@ -67,6 +71,9 @@ type
     property ModeToolbar: TToolBar read FModeToolbar;
     property CommitPanel: TDarkPanel read FCommitPanel;
     property SaveButton: TMmdDarkButton read FSaveButton;
+    // 表情ウェイトの実編集時に最新JSONを通知する。外部からの初期化では発火しない。
+    property OnExpressionDataChanged: TMmdExpressionDataChangedEvent
+      read FOnExpressionDataChanged write FOnExpressionDataChanged;
   end;
 
 implementation
@@ -75,7 +82,7 @@ uses
   Winapi.Windows,
   System.SysUtils,
   Vcl.Forms,
-  MmdModelSettingEditorIcons,
+  MmdModelSettingToolbarFactory,
   MmdModelSettingToolbarRenderer,
   MmdEyeBlinkSettingCodec,
   MmdLipSyncSettingCodec,
@@ -85,6 +92,15 @@ procedure TMmdModelSettingEditorForm.ModeButtonClick(Sender: TObject);
 begin
   if Sender is TToolButton then
     ShowSettingPage(TMmdModelSettingPage(TToolButton(Sender).Tag));
+end;
+
+procedure TMmdModelSettingEditorForm.ExpressionWeightsChanged(Sender: TObject);
+begin
+  FMorphPreview.CopyWeights(FExpressionWeights);
+  FViewport.SetMorphWeights(FExpressionWeights);
+  if Assigned(FOnExpressionDataChanged) then
+    FOnExpressionDataChanged(Self,
+      EncodeMmdMorphSettingData(FModel, FExpressionWeights));
 end;
 
 procedure TMmdModelSettingEditorForm.SaveExpressionPage;
@@ -120,7 +136,9 @@ var
 begin
   SaveExpressionPage;
   FCurrentPage := Page;
-  if Assigned(FModeButtons[Page]) then FModeButtons[Page].Down := True;
+  if (Ord(Page) <= High(FModeButtons)) and
+    Assigned(FModeButtons[Ord(Page)]) then
+    FModeButtons[Ord(Page)].Down := True;
   if FEyeBlinkPanel <> nil then
     FEyeBlinkPanel.Visible := False;
   if FLipSyncPanel <> nil then
@@ -130,6 +148,7 @@ begin
     if FModel <> nil then
       InitializeMorphWeights(FModel, EmptyWeights);
     FMorphPreview.SetWeights(EmptyWeights);
+    FViewport.SetMorphWeights(EmptyWeights);
     FCommandToolbar.Visible := True;
     FBoneList.Visible := True;
     FMorphPreview.Visible := False;
@@ -163,12 +182,16 @@ begin
     Exit;
   end;
   if Page = mspExpression then
-    FMorphPreview.SetWeights(FExpressionWeights)
+  begin
+    FMorphPreview.SetWeights(FExpressionWeights);
+    FViewport.SetMorphWeights(FExpressionWeights);
+  end
   else
   begin
     if FModel <> nil then
       InitializeMorphWeights(FModel, EmptyWeights);
     FMorphPreview.SetWeights(EmptyWeights);
+    FViewport.SetMorphWeights(EmptyWeights);
   end;
   FCommandToolbar.Visible := False;
   FBoneList.Visible := False;
@@ -193,7 +216,10 @@ begin
   if TryDecodeMmdMorphSettingData(ExpressionData, Values) then
     ApplyMmdNamedMorphWeights(FModel, Values, FExpressionWeights);
   if FCurrentPage = mspExpression then
+  begin
     FMorphPreview.SetWeights(FExpressionWeights);
+    FViewport.SetMorphWeights(FExpressionWeights);
+  end;
 end;
 
 procedure TMmdModelSettingEditorForm.InitializeEyeBlink(
@@ -262,28 +288,11 @@ begin
   DrawMmdModelSettingToolbarButton(Sender, Button, State, FModeImages,
     DefaultDraw);
 end;
+
 procedure TMmdModelSettingEditorForm.ConfigureSettingControls(
   ShowAllPages, PoseOnly, FaceOnly: Boolean);
 var
-  Button: TToolButton;
-  ButtonPPI, IconSize, PPI, ToolbarSize: Integer;
-  function AddMode(Page: TMmdModelSettingPage; const Caption: string;
-    Down: Boolean): TToolButton;
-  begin
-    Result := TToolButton.Create(Self);
-    Result.Parent := FModeToolbar;
-    Result.Caption := Caption;
-    Result.Hint := Caption;
-    Result.ShowHint := True;
-    Result.ImageIndex := Ord(Page);
-    Result.Tag := Ord(Page);
-    Result.Style := tbsCheck;
-    Result.Grouped := True;
-    Result.Down := Down;
-    Result.OnClick := ModeButtonClick;
-    FModeButtons[Page] := Result;
-  end;
-
+  ButtonPPI, PPI: Integer;
 begin
   PPI := CurrentPPI;
   if PPI <= 0 then
@@ -291,42 +300,10 @@ begin
   ButtonPPI := PPI;
   if ButtonPPI > 126 then
     ButtonPPI := 126;
-  ToolbarSize := MulDiv(30, PPI, 96);
-  IconSize := MulDiv(20, PPI, 96);
   if not PoseOnly and not FaceOnly then
-  begin
-    FModeImages := TImageList.Create(Self);
-    BuildMmdModelSettingIcons(FModeImages, IconSize, ShowAllPages);
-    FModeToolbar := TToolBar.Create(Self);
-    FModeToolbar.Parent := Self;
-    FModeToolbar.Align := alTop;
-    FModeToolbar.Height := ToolbarSize;
-    FModeToolbar.ButtonWidth := ToolbarSize;
-    FModeToolbar.ButtonHeight := ToolbarSize;
-    FModeToolbar.Color := MmdEditorPanel;
-    FModeToolbar.Flat := True;
-    FModeToolbar.ShowCaptions := False;
-    FModeToolbar.ShowHint := True;
-    FModeToolbar.Wrapable := False;
-    FModeToolbar.Images := FModeImages;
-    FModeToolbar.OnCustomDraw := ModeToolbarCustomDraw;
-    FModeToolbar.OnCustomDrawButton := ModeToolbarCustomDrawButton;
-    if ShowAllPages then
-    begin
-      AddMode(mspLipSync, #$53E3#$30D1#$30AF, False);
-      AddMode(mspEyeBlink, #$76EE#$30D1#$30C1, False);
-      AddMode(mspExpression, #$8868#$60C5, False);
-      Button := AddMode(mspPose, #$30DD#$30FC#$30BA, True);
-    end
-    else
-    begin
-      AddMode(mspExpression, #$8868#$60C5, False);
-      // TToolBarは後からParentへ追加したボタンを左側へ配置する。
-      Button := AddMode(mspPose, #$30DD#$30FC#$30BA, True);
-    end;
-    Button.AllowAllUp := False;
-    FModeToolbar.BringToFront;
-  end;
+    BuildMmdModelSettingToolbar(Self, Self, PPI, ShowAllPages,
+      ModeButtonClick, ModeToolbarCustomDraw, ModeToolbarCustomDrawButton,
+      FModeImages, FModeToolbar, FModeButtons);
   if ShowAllPages and not PoseOnly and not FaceOnly then
   begin
     FEyeBlinkPanel := TMmdEyeBlinkSettingPanel.Create(Self);
@@ -346,6 +323,7 @@ begin
   end;
   FMorphPreview.Visible := False;
   FMorphPreview.MatchParentFont;
+  FMorphPreview.OnWeightsChanged := ExpressionWeightsChanged;
   FDialogButtonPanel.Visible := False;
   FCommitPanel := TDarkPanel.Create(Self);
   FCommitPanel.Parent := Self;

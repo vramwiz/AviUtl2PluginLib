@@ -185,7 +185,8 @@ begin
 end;
 
 procedure BuildTriangles(const Model: TPmxModel;
-  const Skinned: TPmxSkinnedVertices; const Center: TPmxVector3;
+  const Skinned: TPmxSkinnedVertices; const MorphWeights: TPmxMorphWeights;
+  const Center: TPmxVector3;
   out Vertices: TMmdPreviewVertices; out Batches: TMmdPreviewBatches);
 var
   BatchCount: Integer;
@@ -194,16 +195,18 @@ var
   MaterialIndex: Integer;
   Normal: TPmxVector3;
   Position: TPmxVector3;
+  ResolvedMaterials: TArray<TPmxMaterial>;
   SourceIndex: Integer;
   VertexIndex: Integer;
 begin
+  ResolveMorphMaterials(Model, MorphWeights, ResolvedMaterials);
   SetLength(Vertices, Length(Model.Indices));
   SetLength(Batches, Length(Model.Materials));
   VertexIndex := 0;
   BatchCount := 0;
   for MaterialIndex := 0 to High(Model.Materials) do
   begin
-    Material := Model.Materials[MaterialIndex];
+    Material := ResolvedMaterials[MaterialIndex];
     if Material.Diffuse.W <= 0.0001 then
       Continue;
     Batches[BatchCount].FirstVertex := VertexIndex;
@@ -343,7 +346,8 @@ begin
   Scene.Projection.Radius := Max(0.5 * Sqrt(
     Sqr(Scene.Projection.ModelWidth) + Sqr(Scene.Projection.ModelHeight) +
     Sqr(Depth)), 0.001);
-  BuildTriangles(Model, Skinned, Center, Scene.Triangles, Scene.Batches);
+  BuildTriangles(Model, Skinned, MorphWeights, Center, Scene.Triangles,
+    Scene.Batches);
   BuildBoneLines(Model, Transforms, Center, SelectedTarget, HoverTarget,
     Scene.BoneLines, Scene.BoneSegments, Scene.Joints);
 end;
@@ -363,7 +367,8 @@ begin
   DeformPreviewModel(Model, Poses, MorphWeights, Transforms, Skinned);
   Scene.Center := Center;
   Scene.Projection := Projection;
-  BuildTriangles(Model, Skinned, Center, Scene.Triangles, Scene.Batches);
+  BuildTriangles(Model, Skinned, MorphWeights, Center, Scene.Triangles,
+    Scene.Batches);
   BuildBoneLines(Model, Transforms, Center, SelectedTarget, HoverTarget,
     Scene.BoneLines, Scene.BoneSegments, Scene.Joints);
 end;
