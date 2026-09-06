@@ -44,6 +44,8 @@ type
     constructor CreateEditor(const ModelFileName, PoseData,
       EditorCaption: string);
     destructor Destroy; override;
+    // 外部生成された完全な姿勢JSONを現在モデルへ適用し、1回のUndoで戻せるようにする。
+    function ApplyExternalPose(const PoseData: string): Boolean;
     function EncodeCurrentPose: string;
     procedure LoadEditorModel(AModel: TPmxModel; const PoseData: string);
   end;
@@ -191,6 +193,26 @@ destructor TStandardPoseEditorForm.Destroy;
 begin
   FHistory.Free;
   inherited Destroy;
+end;
+
+function TStandardPoseEditorForm.ApplyExternalPose(
+  const PoseData: string): Boolean;
+var
+  BeforePoses, NewPoses: TPmxBonePoses;
+  NamedPoses: TPmxNamedBonePoses;
+begin
+  Result := False;
+  if (FModel = nil) or not TryDecodePoseData(PoseData, NamedPoses) then
+    Exit;
+  BeforePoses := Copy(FPoses);
+  InitializeBonePoses(FModel, NewPoses);
+  ApplyNamedBonePoses(FModel, NamedPoses, NewPoses);
+  FHistory.RecordBeforeEdit(BeforePoses);
+  FPoses := NewPoses;
+  FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
+  UpdateHistoryButtons;
+  PoseStateChanged;
+  Result := True;
 end;
 
 procedure TStandardPoseEditorForm.SymmetryChanged(Sender: TObject);
