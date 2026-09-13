@@ -507,7 +507,9 @@ var
   i            : Integer;
 begin
   Result := nil;
-  if Files.Count = 0 then Exit;
+  // IShellFolder は空の親フォルダを解決できない。データ生成側の
+  // 不備で D&D 開始中に OLE 例外へ進まないよう、ここで打ち切る。
+  if (Directory = '') or (Files.Count = 0) then Exit;
   OleCheck(SHGetMalloc(Malloc));
   OleCheck(SHGetDesktopFolder(Root));
   OleCheck(Root.ParseDisplayName(0, nil, PWideChar(WideString(Directory)),

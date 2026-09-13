@@ -34,7 +34,8 @@ begin
   Vertex.NormalX := Normal.X;
   Vertex.NormalY := Normal.Y;
   Vertex.NormalZ := Normal.Z;
-  Vertex.Lighting := 1.0;
+  // 2は固定ピクセル球。位置は中心、法線は球面の単位オフセットとして渡す。
+  Vertex.Lighting := 2.0;
 end;
 
 function SphereOffset(Latitude, Longitude, Radius: Single): TPmxVector3;
@@ -53,7 +54,7 @@ procedure AppendSpherePoint(const Center, Offset: TPmxVector3;
 var
   Position: TPmxVector3;
 begin
-  Position := AddVector(Center, Offset);
+  Position := Center;
   SetShapeVertex(Vertices[VertexIndex], Position, NormalizeVector(Offset),
     R, G, B);
   Inc(VertexIndex);
@@ -105,7 +106,7 @@ var
 begin
   SetLength(Vertices, SPHERE_VERTEX_COUNT);
   VertexIndex := 0;
-  Radius := ModelHeight * 0.012;
+  Radius := 1.0; // 画面上の半径はシェーダー側で固定する。
   if SelectedTarget.Locked then
   begin
     R := 0.55;

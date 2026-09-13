@@ -40,14 +40,14 @@ type
   TMmdCameraConstants = packed record
     SinYaw, CosYaw, SinPitch, CosPitch: Single;
     ScaleX, ScaleY, DepthScale, PanX: Single;
-    PanY, Padding1, Padding2, Padding3: Single;
+    PanY, MarkerScaleX, MarkerScaleY, Padding3: Single;
   end;
 
 const
   SHADER_SOURCE: AnsiString =
     'cbuffer C:register(b0){float sy;float cy;float sp;float cp;' +
     'float sx;float scaleY;float ds;float px;' +
-    'float py;float pad1;float pad2;float pad3;};' +
+    'float py;float markerX;float markerY;float pad3;};' +
     'Texture2D tex:register(t0);SamplerState sam:register(s0);' +
     'struct I{float3 p:POSITION;float4 c:COLOR;float2 uv:TEXCOORD;' +
     'float3 n:NORMAL;float lighting:LIGHTFACTOR;};' +
@@ -61,6 +61,9 @@ const
     'float diffuse=saturate(dot(normalize(float3(nx,ny,nz)),' +
     'normalize(float3(0,0.28,-0.96))));' +
     'o.p=float4(x*sx+px,y*scaleY+py,0.5+z*ds,1);o.c=v.c;o.uv=v.uv;' +
+    // 選択球だけを中心投影後に半径6pxで展開し、ズームと表示寸法を打ち消す。
+    'if(v.lighting>1.5){o.p.xy+=float2(nx*markerX,ny*markerY);' +
+    'o.p.z+=nz*markerX/max(sx,0.000001)*ds;}' +
     'o.shade=lerp(1.0,0.68+0.42*diffuse,saturate(v.lighting));return o;}' +
     'float4 PSMain(O i):SV_TARGET{float4 c=tex.Sample(sam,i.uv)*i.c;' +
     'c.rgb*=i.shade;' +
@@ -150,8 +153,8 @@ begin
   Constants.DepthScale := 0.45 / Max(Projection.Radius, 0.001);
   Constants.PanX := Camera.PanX * 2.0 / ViewWidth;
   Constants.PanY := -Camera.PanY * 2.0 / ViewHeight;
-  Constants.Padding1 := 0;
-  Constants.Padding2 := 0;
+  Constants.MarkerScaleX := 12.0 / ViewWidth;
+  Constants.MarkerScaleY := 12.0 / ViewHeight;
   Constants.Padding3 := 0;
   Context.UpdateSubresource(FCameraBuffer, 0, nil, @Constants, 0, 0);
 end;
