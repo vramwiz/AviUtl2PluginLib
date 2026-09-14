@@ -233,7 +233,7 @@
 
 - Delphi 13 / Win64 / Debugを使用する。
 - ModuleとSerifDrawは通常のPostBuild込みビルドでAviUtl2の配置先へ出力する。
-- 主な専用テストは`Plugin_Filter/SerifDraw/Tests`にある。アニメーション項目、状態遷移、共有受信、
+- 主な専用テストは`AviUtl2PluginLib/Serif/Plugin/Draw/Tests`にある。アニメーション項目、状態遷移、共有受信、
   同期フレーム位置、設定、配置、枠、配役名を変更した場合は対応テストを再実行する。
 - 実機確認にはAviUtl2の再起動が必要。
 
@@ -248,6 +248,6 @@
 ## 関連ノート
 
 - 完了済み作業履歴: [`note_history.md`](note_history.md)
-- セリフ機能全般: [`../../../AviUtl2PluginLib/Serif/note.md`](../../../AviUtl2PluginLib/Serif/note.md)
-- 共通文字描画: [`AviUtl2PluginLib/Lib/TextRenderer/README.md`](../../../AviUtl2PluginLib/Lib/TextRenderer/README.md)
-- ルート作業ノート: [`../../note.md`](../../note.md)
+- セリフ機能全般: [`../../note.md`](../../note.md)
+- 共通文字描画: [`../../../Lib/TextRenderer/README.md`](../../../Lib/TextRenderer/README.md)
+- ルート作業ノート: [`../../../../Syncroh2/note.md`](../../../../Syncroh2/note.md)

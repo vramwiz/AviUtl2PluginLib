@@ -79,7 +79,7 @@
 - 旧セリフ枠のhold／fadeは`PluginModuleSerifCount.pas`の`get_serif_count(obj.id, obj.frame)`が管理する。
   同一フレーム再評価または逆方向移動では保持値を消し、正方向スキップは継続として扱う。
 - 新しいSerifDrawの描画、配役、枠、複数配役表示、アニメーションの現行仕様は
-  [`../../Plugin_Filter/SerifDraw/note.md`](../../Plugin_Filter/SerifDraw/note.md)を参照する。
+  [`Plugin/Draw/note.md`](Plugin/Draw/note.md)を参照する。
 - SerifDrawアニメーションは設定画面ではなくAviUtl2オブジェクトのパラメーターで設定する。
 
 ## 主なユニット
@@ -140,9 +140,9 @@
 ## 関連ノート
 
 - 完了済み作業履歴: [`note_history.md`](note_history.md)
-- SerifDraw現行仕様: [`../../Plugin_Filter/SerifDraw/note.md`](../../Plugin_Filter/SerifDraw/note.md)
+- SerifDraw現行仕様: [`Plugin/Draw/note.md`](Plugin/Draw/note.md)
 - Watcher固有: [`Watcher/note.md`](Watcher/note.md)
-- Face連携: [`../Face/note.md`](../Face/note.md)
-- PSD描画側のセリフ同期: [`../../Plugin_Filter/PSD/note.md`](../../Plugin_Filter/PSD/note.md)
-- AviUtl2連携: [`../../AviUtl/note.md`](../../AviUtl/note.md)
-- ルート作業ノート: [`../../note.md`](../../note.md)
+- Face連携: [`../../Syncroh2/Plugin_Extension/Face/note.md`](../../Syncroh2/Plugin_Extension/Face/note.md)
+- PSD描画側のセリフ同期: [`../../Syncroh2/Plugin_Filter/PSD/note.md`](../../Syncroh2/Plugin_Filter/PSD/note.md)
+- AviUtl2連携: [`../../Syncroh2/AviUtl/note.md`](../../Syncroh2/AviUtl/note.md)
+- ルート作業ノート: [`../../Syncroh2/note.md`](../../Syncroh2/note.md)
