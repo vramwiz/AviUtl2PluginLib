@@ -19,6 +19,7 @@ uses
   PluginFilterSerifDrawAnimationItems,
   PluginFilterSerifDrawFrameCapture,
   PluginFilterSerifDrawSettings,
+  PluginFilterSerifDrawStyle,
   PluginFilterSerifDrawSettingsForm,
   SerifDrawPluginProfile,
   PluginFilterTable;
@@ -41,6 +42,7 @@ var
   SelectedSettings: TSerifDrawSettings;
   SelectedText: string;
   Utf8Text: UTF8String;
+  Generation: UInt64;
 begin
   try
     Profile := CurrentSerifDrawPluginProfile;
@@ -48,6 +50,7 @@ begin
     CurrentText := '';
     if Assigned(SerifDrawSettingsItem.Value) then
       CurrentText := string(SerifDrawSettingsItem.Value);
+    CurrentText := ResolveSerifDrawStyleText(CurrentText);
     SerifDrawDebugLog('Settings source data: ' + CurrentText);
     if Trim(CurrentText) = '' then
       CurrentSettings := TSerifDrawSettings.Default
@@ -100,6 +103,9 @@ begin
           mtError, [mbOK], 0);
         Exit;
       end;
+      Generation := NewSerifDrawStyleGeneration;
+      SetCurrentSerifDrawStyleMeta(CurrentSerifDrawStyleNo, Generation);
+      PublishSerifDrawStyle(CurrentSerifDrawStyleNo, Generation, SelectedText);
       SerifDrawDebugLog('Settings saved: ' + SelectedText);
     finally
       Form.Free;
@@ -135,6 +141,7 @@ begin
       @FilterProcVideo,
       nil);
     AddButton(SettingsButton, '設定', SettingsButtonCallback);
+    AddSerifDrawStyleItems;
     AddString(SerifDrawSettingsItem, PWideChar(Profile.SettingsItemName), '');
     AddSerifDrawAnimationItems;
   end;

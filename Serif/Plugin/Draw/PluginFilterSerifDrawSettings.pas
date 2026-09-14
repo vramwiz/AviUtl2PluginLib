@@ -289,7 +289,8 @@ uses
   System.Classes,
   System.Math,
   System.SysUtils,
-  PluginFilterSerifDrawRoleNames
+  PluginFilterSerifDrawRoleNames,
+  PluginFilterSerifDrawStyle
 {$IFDEF DEBUG}
   , PluginFilterSerifDrawDebugLog,
   Winapi.Windows
@@ -603,6 +604,7 @@ begin
   Text := '';
   if Assigned(SerifDrawSettingsItem.Value) then
     Text := string(SerifDrawSettingsItem.Value);
+  Text := ResolveSerifDrawStyleText(Text);
   if not TSerifDrawSettings.TryDecode(Text, Result, ErrorText) then
   begin
 {$IFDEF DEBUG}
