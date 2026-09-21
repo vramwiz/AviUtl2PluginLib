@@ -13,6 +13,13 @@ procedure AddSerifDrawAnimationItems;
 function CurrentSerifDrawAnimationParameters:
   TSerifDrawAnimationParameters;
 
+// 保存用は共有解決を経ず、現在オブジェクトの生の値を取得する。
+function LocalSerifDrawAnimationParameters: TSerifDrawAnimationParameters;
+function EncodeSerifDrawAnimation(const Params: TSerifDrawAnimationParameters): string;
+function TryDecodeSerifDrawAnimation(const Text: string; out Params: TSerifDrawAnimationParameters): Boolean;
+// 明示読み込み時だけSDK経由で各設定欄を更新する。
+procedure LoadSerifDrawAnimation(Edit: PEDIT_SECTION; const EffectName, Text: string);
+
 var
   BeforeGroup: TFILTER_ITEM_GROUP;
   BeforeTypeItem: TFILTER_ITEM_SELECT;
@@ -45,7 +52,8 @@ var
 implementation
 
 uses
-  PluginFilterTable;
+  System.SysUtils, System.JSON, System.Math, System.Generics.Collections, Winapi.Windows,
+  PluginFilterTable, PluginFilterSerifDrawStyle;
 
 const
   DEFAULT_SPEED = 1.00;
@@ -234,7 +242,7 @@ begin
     SizeOf(AfterValue1CompatibilityValue));
 end;
 
-function CurrentSerifDrawAnimationParameters:
+function LocalSerifDrawAnimationParameters:
   TSerifDrawAnimationParameters;
 begin
   Result := System.Default(TSerifDrawAnimationParameters);
@@ -259,4 +267,126 @@ begin
   Result.AfterZoomDestination := AfterZoomDestinationItem.Value;
 end;
 
+
+var
+  AnimationCache: TDictionary<string, TSerifDrawAnimationParameters>;
+  AnimationLock: TRTLCriticalSection;
+
+function EncodeSerifDrawAnimation(const Params: TSerifDrawAnimationParameters): string;
+var O: TJSONObject;
+begin
+  O := TJSONObject.Create;
+  try
+    O.AddPair('version', '1');
+    O.AddPair('前 種類', IntToStr(Params.BeforeKind));
+    O.AddPair('前 方向', IntToStr(Params.BeforeDirection));
+    O.AddPair('前 奥行き', IntToStr(Params.BeforeZoomOrigin));
+    O.AddPair('常時 感情表現', IntToStr(Ord(Params.DuringEmotionEnabled)));
+    O.AddPair('常時 速さ', FloatToStr(Params.DuringSpeed, TFormatSettings.Invariant));
+    O.AddPair('同期 種類', IntToStr(Params.SyncKind));
+    O.AddPair('同期 色塗り', IntToStr(Params.SyncPaintMode));
+    O.AddPair('同期 通過後', IntToStr(Params.SyncMode));
+    O.AddPair('同期 形', IntToStr(Params.SyncShape));
+    O.AddPair('同期 色', IntToHex(Params.SyncColor and $FFFFFF, 6));
+    O.AddPair('同期 サイズ', FloatToStr(Params.SyncSize, TFormatSettings.Invariant));
+    O.AddPair('同期 オフセットX', FloatToStr(Params.SyncOffsetX, TFormatSettings.Invariant));
+    O.AddPair('同期 オフセットY', FloatToStr(Params.SyncOffsetY, TFormatSettings.Invariant));
+    O.AddPair('後 種類', IntToStr(Params.AfterKind));
+    O.AddPair('後 方向', IntToStr(Params.AfterDirection));
+    O.AddPair('後 奥行き', IntToStr(Params.AfterZoomDestination));
+    Result := O.ToJSON;
+  finally O.Free end;
+end;
+
+function TryDecodeSerifDrawAnimation(const Text: string; out Params: TSerifDrawAnimationParameters): Boolean;
+var V: TJSONValue; N: Double;
+  function Number(const Name: string; Min, Max: Double): Double;
+  begin
+    if not TryStrToFloat(V.GetValue<string>(Name), Result, TFormatSettings.Invariant) or
+      IsNan(Result) or IsInfinite(Result) or (Result < Min) or (Result > Max) then
+      raise EConvertError.Create('Invalid animation value: ' + Name);
+  end;
+  function IntegerValue(const Name: string; Min, Max: Integer): Integer;
+  begin
+    N := Number(Name, Min, Max);
+    if Frac(N) <> 0 then raise EConvertError.Create('Invalid animation integer');
+    Result := Round(N);
+  end;
+begin
+  Result := False;
+  Params := Default(TSerifDrawAnimationParameters);
+  if Text = '' then Exit;
+  EnterCriticalSection(AnimationLock);
+  try
+    if AnimationCache.TryGetValue(Text, Params) then Exit(True);
+    V := TJSONObject.ParseJSONValue(Text);
+    try
+      try
+        if not (V is TJSONObject) or (V.GetValue<string>('version', '') <> '1') then Exit;
+        Params.BeforeKind := IntegerValue('前 種類', 0, 11);
+        Params.BeforeDirection := IntegerValue('前 方向', 0, 4);
+        Params.BeforeZoomOrigin := IntegerValue('前 奥行き', 0, 1);
+        Params.DuringEmotionEnabled := (IntegerValue('常時 感情表現', 0, 1) <> 0);
+        Params.DuringSpeed := Number('常時 速さ', 0, 100);
+        Params.SyncKind := IntegerValue('同期 種類', 0, 7);
+        Params.SyncPaintMode := IntegerValue('同期 色塗り', 0, 1);
+        Params.SyncMode := IntegerValue('同期 通過後', 0, 1);
+        Params.SyncShape := IntegerValue('同期 形', 0, 3);
+        Params.SyncColor := $FF000000 or Cardinal(StrToInt('$' + V.GetValue<string>('同期 色')));
+        Params.SyncSize := Number('同期 サイズ', 1, 1000);
+        Params.SyncOffsetX := Number('同期 オフセットX', -100, 100);
+        Params.SyncOffsetY := Number('同期 オフセットY', -100, 100);
+        Params.AfterKind := IntegerValue('後 種類', 0, 11);
+        Params.AfterDirection := IntegerValue('後 方向', 0, 4);
+        Params.AfterZoomDestination := IntegerValue('後 奥行き', 0, 1);
+        Params.SyncSpeed := SYNC_SPEED_DEFAULT;
+        Params.SyncValue1 := SYNC_VALUE1_DEFAULT;
+        if AnimationCache.Count >= 32 then AnimationCache.Clear;
+        AnimationCache.Add(Text, Params);
+        Result := True;
+      except
+        Params := Default(TSerifDrawAnimationParameters);
+        Result := False;
+      end;
+    finally V.Free end;
+  finally LeaveCriticalSection(AnimationLock) end;
+end;
+
+function CurrentSerifDrawAnimationParameters: TSerifDrawAnimationParameters;
+var Text: string; Shared: TSerifDrawAnimationParameters;
+begin
+  Result := LocalSerifDrawAnimationParameters;
+  if TryResolveSerifDrawStyleAnimation(Text) and TryDecodeSerifDrawAnimation(Text, Shared) then
+    Result := Shared;
+end;
+
+procedure LoadSerifDrawAnimation(Edit: PEDIT_SECTION; const EffectName, Text: string);
+var Params: TSerifDrawAnimationParameters; V: TJSONValue; Pair: TJSONPair;
+    Obj: OBJECT_HANDLE; Value: UTF8String;
+begin
+  if Text = '' then Exit; // 旧スタイルは自身のアニメーション設定を維持する。
+  if not TryDecodeSerifDrawAnimation(Text, Params) then
+    raise EConvertError.Create('共有アニメーション設定を読み込めません。');
+  if (Edit = nil) or not Assigned(Edit^.GetFocusObject) or not Assigned(Edit^.SetObjectItemValue) then
+    raise Exception.Create('読み込み対象を取得できません。');
+  Obj := Edit^.GetFocusObject();
+  if Obj = nil then raise Exception.Create('読み込み対象がありません。');
+  V := TJSONObject.ParseJSONValue(EncodeSerifDrawAnimation(Params));
+  try
+    for Pair in TJSONObject(V) do
+      if Pair.JsonString.Value <> 'version' then
+      begin
+        Value := UTF8String(Pair.JsonValue.Value);
+        if not Edit^.SetObjectItemValue(Obj, PChar(EffectName), PChar(Pair.JsonString.Value), PAnsiChar(Value)) then
+          raise Exception.Create('設定を読み込めませんでした: ' + Pair.JsonString.Value);
+      end;
+  finally V.Free end;
+end;
+
+initialization
+  InitializeCriticalSection(AnimationLock);
+  AnimationCache := TDictionary<string, TSerifDrawAnimationParameters>.Create;
+finalization
+  AnimationCache.Free;
+  DeleteCriticalSection(AnimationLock);
 end.

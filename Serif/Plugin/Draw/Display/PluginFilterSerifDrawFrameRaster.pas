@@ -6,6 +6,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Types,
   PluginFilterSerifDrawSettings;
 
 // FrameKindが共通枠の場合だけ、Pixelsへ共通枠をアルファ合成する。
@@ -16,16 +17,31 @@ procedure CompositeSerifDrawCommonFrame(var Pixels: TBytes;
 procedure CompositeSerifDrawFrames(var Pixels: TBytes;
   const ImageWidth, ImageHeight: Integer; const Settings: TSerifDrawSettings;
   const ActiveRoleNames: array of string);
+// 透明背景上に作成済みの枠を、変更された矩形内だけ映像に合成する。
+procedure BlendSerifDrawFrameOverlay(var Pixels: TBytes;
+  const Overlay: TBytes; const ImageWidth, ImageHeight: Integer;
+  const Bounds: TRect);
+function SerifDrawFrameOverlayBounds(const Overlay: TBytes;
+  const ImageWidth, ImageHeight: Integer): TRect;
 
 implementation
 
 uses
   System.Math,
-  System.Types,
   TextRendererTypes;
 
+function BlendOpaqueChannel(const Source, Destination,
+  SourceAlpha: Cardinal): Byte; inline;
+var
+  Mixed: Cardinal;
+begin
+  // 0..65025 の /255 を乗算とシフトへ置き換える。+128 は四捨五入用。
+  Mixed := Source * SourceAlpha + Destination * (255 - SourceAlpha) + 128;
+  Result := (Mixed + (Mixed shr 8)) shr 8;
+end;
+
 procedure BlendPixel(const Source: TTextRenderPixel;
-  var Destination: TTextRenderPixel);
+  var Destination: TTextRenderPixel); inline;
 var
   AlphaDenominator: Cardinal;
   DestinationAlpha: Cardinal;
@@ -40,6 +56,15 @@ begin
     Exit;
   end;
   DestinationAlpha := Destination.A;
+  if DestinationAlpha = 255 then
+  begin
+    // AviUtl2から取得した通常の映像は不透明。一般式の32bit除算を
+    // 3チャンネル分行わず、同じ丸め結果の高速経路を利用する。
+    Destination.R := BlendOpaqueChannel(Source.R, Destination.R, SourceAlpha);
+    Destination.G := BlendOpaqueChannel(Source.G, Destination.G, SourceAlpha);
+    Destination.B := BlendOpaqueChannel(Source.B, Destination.B, SourceAlpha);
+    Exit;
+  end;
   AlphaDenominator := SourceAlpha * 255 +
     DestinationAlpha * (255 - SourceAlpha);
   if AlphaDenominator = 0 then
@@ -324,7 +349,8 @@ begin
     Inc(Destination, NativeInt(Y) * ImageWidth + Clipped.Left);
     for X := Clipped.Left to Clipped.Right - 1 do
     begin
-      if PointInFrameShape(X, Y, Rect, Style, Radius) then
+      // 長方形は最も一般的で、全画素に対する形状判定を省略できる。
+      if (Style.Shape = 0) or PointInFrameShape(X, Y, Rect, Style, Radius) then
         BlendPixel(RowPixel, Destination^);
       Inc(Destination);
     end;
@@ -620,6 +646,65 @@ begin
         CompositeFrameStyle(Pixels, ImageWidth, ImageHeight,
           Settings.ResolveFrameAppearance(-1,
             ActiveRoleNames[High(ActiveRoleNames)]));
+  end;
+end;
+
+function SerifDrawFrameOverlayBounds(const Overlay: TBytes;
+  const ImageWidth, ImageHeight: Integer): TRect;
+var
+  Pixel: PTextRenderPixel;
+  X, Y: Integer;
+begin
+  Result := Rect(ImageWidth, ImageHeight, 0, 0);
+  if (ImageWidth <= 0) or (ImageHeight <= 0) or
+    (Length(Overlay) < NativeInt(ImageWidth) * ImageHeight *
+      SizeOf(TTextRenderPixel)) then
+    Exit(TRect.Empty);
+  Pixel := PTextRenderPixel(@Overlay[0]);
+  for Y := 0 to ImageHeight - 1 do
+    for X := 0 to ImageWidth - 1 do
+    begin
+      if Pixel^.A <> 0 then
+      begin
+        if X < Result.Left then Result.Left := X;
+        if Y < Result.Top then Result.Top := Y;
+        if X >= Result.Right then Result.Right := X + 1;
+        if Y >= Result.Bottom then Result.Bottom := Y + 1;
+      end;
+      Inc(Pixel);
+    end;
+  if (Result.Right <= Result.Left) or (Result.Bottom <= Result.Top) then
+    Result := TRect.Empty;
+end;
+
+procedure BlendSerifDrawFrameOverlay(var Pixels: TBytes;
+  const Overlay: TBytes; const ImageWidth, ImageHeight: Integer;
+  const Bounds: TRect);
+var
+  Destination, Source: PTextRenderPixel;
+  X, Y: Integer;
+begin
+  if (Bounds.Right <= Bounds.Left) or (Bounds.Bottom <= Bounds.Top) or
+    (Bounds.Left < 0) or (Bounds.Top < 0) or
+    (Bounds.Right > ImageWidth) or (Bounds.Bottom > ImageHeight) or
+    (Length(Pixels) < NativeInt(ImageWidth) * ImageHeight *
+      SizeOf(TTextRenderPixel)) or
+    (Length(Overlay) < NativeInt(ImageWidth) * ImageHeight *
+      SizeOf(TTextRenderPixel)) then
+    Exit;
+  for Y := Bounds.Top to Bounds.Bottom - 1 do
+  begin
+    Source := PTextRenderPixel(@Overlay[0]);
+    Destination := PTextRenderPixel(@Pixels[0]);
+    Inc(Source, NativeInt(Y) * ImageWidth + Bounds.Left);
+    Inc(Destination, NativeInt(Y) * ImageWidth + Bounds.Left);
+    for X := Bounds.Left to Bounds.Right - 1 do
+    begin
+      if Source^.A <> 0 then
+        BlendPixel(Source^, Destination^);
+      Inc(Source);
+      Inc(Destination);
+    end;
   end;
 end;
 

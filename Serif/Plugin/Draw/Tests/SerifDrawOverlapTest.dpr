@@ -74,5 +74,15 @@ begin
   Require((BandTop = 6) and (BandBottom = 10),
     'Last split band mismatch.');
 
+  // 下側の影が大きくても、2人の分割線は文字レイアウトの中央に置く。
+  SerifDrawSplitLayoutBand(100, -10, 140, 0, 2,
+    BandTop, BandBottom);
+  Require((BandTop = 0) and (BandBottom = 60),
+    'First layout band must end at the text center.');
+  SerifDrawSplitLayoutBand(100, -10, 140, 1, 2,
+    BandTop, BandBottom);
+  Require((BandTop = 60) and (BandBottom = 140),
+    'Last layout band must include the lower effect margin.');
+
   Writeln('SerifDraw overlap tests passed.');
 end.

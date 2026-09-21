@@ -19,6 +19,8 @@ procedure CleanupOrphanTemporarySerifProjects;
 function IsTemporarySerifProjectFolder(const Folder: string): Boolean;
 function PromoteTemporarySerifProject(const SourceFolder, DestinationFolder: string): Boolean;
 procedure DeleteTemporarySerifProjectFolder(const Folder: string);
+// 別フォルダーへ保存する際に、台本本文を除くプロジェクト設定を引き継ぐ。
+function CopySerifProjectSettings(const SourceFolder, DestinationFolder: string): Boolean;
 
 type
   TSerifProjectList = class(TProjectManager<TSerifProjectItem>)
@@ -274,6 +276,20 @@ begin
   end;
 end;
 
+function CopySerifProjectSettings(const SourceFolder,
+  DestinationFolder: string): Boolean;
+begin
+  // Scene.ini は台本本文なのでコピーしない。配役・監視・表示設定だけを
+  // 新しい AviUtl2 プロジェクト用のフォルダーへ引き継ぐ。
+  Result := CopyProjectFile(DestinationFolder, SourceFolder, 'Charas.ini');
+  if CopyProjectFile(DestinationFolder, SourceFolder, 'Styles.ini') then
+    Result := True;
+  if CopyProjectFile(DestinationFolder, SourceFolder, 'Watchers.ini') then
+    Result := True;
+  if CopyProjectFile(DestinationFolder, SourceFolder, 'Config.ini') then
+    Result := True;
+end;
+
 
 
 function TSerifProjectList.ProjectAdd: TSerifProjectItem;
@@ -295,6 +311,7 @@ begin
   CopyProjectFile(folderTo, folderFrom ,'Charas.ini');
   CopyProjectFile(folderTo, folderFrom ,'Watchers.ini');
   CopyProjectFile(folderTo, folderFrom ,'Config.ini');
+  CopyProjectFile(folderTo, folderFrom ,'Styles.ini');
   Result := True;
 end;
 

@@ -1,217 +1,161 @@
-unit PluginFilterSerifDrawStyle;
+﻿unit PluginFilterSerifDrawStyle;
 
+// スタイル番号の選択、明示的な保存／読み込み、描画時の世代解決を担当する。
 interface
-
-uses
-  AviUtl2FilterTypes;
-
-const
-  SERIF_DRAW_STYLE_MIN = 1;
-  SERIF_DRAW_STYLE_MAX = 99;
-  SERIF_DRAW_STYLE_META_MAGIC = $53534453; // "SDSS"
-  SERIF_DRAW_STYLE_META_VERSION = 1;
-
-type
-  TSerifDrawStyleMeta = packed record
-    Magic: Cardinal;
-    Version: Cardinal;
-    StyleNo: Cardinal;
-    Generation: UInt64;
-  end;
-
-var
-  SerifDrawStyleItem: TFILTER_ITEM_SELECT;
-  SerifDrawStyleMetaItem: TFILTER_ITEM_DATA;
-
+uses AviUtl2FilterTypes;
+// セレクタは先頭側、内部値は全ユーザー項目の後へ登録する。
 procedure AddSerifDrawStyleItems;
-function CurrentSerifDrawStyleNo: Integer;
-function CurrentSerifDrawStyleGeneration: UInt64;
+procedure AddSerifDrawStyleInternalItems;
+function CurrentSerifDrawStyleID: string;
+function ResolvedSerifDrawStyleUID: string;
+function SerifDrawStyleStatus: string;
+// 旧世代だけ共有定義を参照し、保存済みオブジェクトには書き戻さない。
 function ResolveSerifDrawStyleText(const ALocalText: string): string;
-function NewSerifDrawStyleGeneration: UInt64;
-procedure PublishSerifDrawStyle(const AStyleNo: Integer;
-  const AGeneration: UInt64; const ASettingsText: string);
-procedure SetCurrentSerifDrawStyleMeta(const AStyleNo: Integer;
-  const AGeneration: UInt64);
+function TryResolveSerifDrawStyleAnimation(out Text: string): Boolean;
+// 明示保存は自身の値を公開し、読み込みは共有値を自身へ取り込む。
+procedure SaveCurrentSerifDrawStyle(Edit: PEDIT_SECTION; const LocalText: string);
+procedure LoadCurrentSerifDrawStyle(Edit: PEDIT_SECTION);
+// 個別編集後の設定がどの共有世代を基にしているか記録する。
+procedure SetCurrentSerifDrawStyleVersion(Edit: PEDIT_SECTION; const UID: string);
 
 implementation
-
-uses
-  System.SysUtils,
-  Winapi.Windows,
-  PluginFilterTable,
-  PluginFilterSerifDrawDebugLog;
-
-type
-  TSerifDrawStyleCacheEntry = record
-    HasValue: Boolean;
-    Generation: UInt64;
-    SettingsText: string;
-  end;
-
+uses System.SysUtils, PluginFilterTable, SerifDrawPluginProfile, SerifStyleSharedMemory,
+  PluginFilterSerifDrawAnimationItems;
 var
-  GCache: array[SERIF_DRAW_STYLE_MIN..SERIF_DRAW_STYLE_MAX] of
-    TSerifDrawStyleCacheEntry;
-  GDefaultMeta: TSerifDrawStyleMeta;
-  GLastGeneration: UInt64;
-  GLock: TRTLCriticalSection;
-  GStyleList: array[0..SERIF_DRAW_STYLE_MAX - SERIF_DRAW_STYLE_MIN + 1] of
-    TFILTER_ITEM_SELECT_ITEM;
-  GStyleNames: array[SERIF_DRAW_STYLE_MIN..SERIF_DRAW_STYLE_MAX] of string;
-
-function ClampStyleNo(const AStyleNo: Integer): Integer;
-begin
-  Result := AStyleNo;
-  if Result < SERIF_DRAW_STYLE_MIN then
-    Result := SERIF_DRAW_STYLE_MIN
-  else if Result > SERIF_DRAW_STYLE_MAX then
-    Result := SERIF_DRAW_STYLE_MAX;
-end;
-
-function TryCurrentMeta(out AMeta: TSerifDrawStyleMeta): Boolean;
-begin
-  Result := (SerifDrawStyleMetaItem.Value <> nil) and
-    (SerifDrawStyleMetaItem.Size >= SizeOf(AMeta));
-  if Result then
-  begin
-    Move(SerifDrawStyleMetaItem.Value^, AMeta, SizeOf(AMeta));
-    Result := (AMeta.Magic = SERIF_DRAW_STYLE_META_MAGIC) and
-      (AMeta.Version = SERIF_DRAW_STYLE_META_VERSION);
-  end;
-  if not Result then
-    AMeta := Default(TSerifDrawStyleMeta);
-end;
+  StyleItem: TFILTER_ITEM_SELECT;
+  StyleIDItem, StyleUIDItem, StyleAnimationUIDItem: TFILTER_ITEM_STRING;
+  InternalGroup: TFILTER_ITEM_GROUP;
+  Names: array[0..9] of string;
+  Choices: array[0..10] of TFILTER_ITEM_SELECT_ITEM;
+  Channel: TSerifStyleChannel;
 
 procedure AddSerifDrawStyleItems;
-var
-  I: Integer;
+var I: Integer;
 begin
-  for I := SERIF_DRAW_STYLE_MIN to SERIF_DRAW_STYLE_MAX do
+  if Channel = nil then
+    Channel := TSerifStyleChannel.Create(CurrentSerifDrawPluginProfile.ProductID);
+  for I := 0 to 9 do
   begin
-    GStyleNames[I] := Format(#$30B9#$30BF#$30A4#$30EB' %d', [I]);
-    GStyleList[I - SERIF_DRAW_STYLE_MIN].Name := PWideChar(GStyleNames[I]);
-    GStyleList[I - SERIF_DRAW_STYLE_MIN].Value := I;
+    if I = 0 then Names[I] := '標準' else Names[I] := Format('スタイル%d', [I]);
+    Choices[I].Name := PChar(Names[I]);
+    Choices[I].Value := I;
   end;
-  GStyleList[High(GStyleList)].Name := nil;
-  GStyleList[High(GStyleList)].Value := 0;
-
-  GDefaultMeta.Magic := SERIF_DRAW_STYLE_META_MAGIC;
-  GDefaultMeta.Version := SERIF_DRAW_STYLE_META_VERSION;
-  GDefaultMeta.StyleNo := SERIF_DRAW_STYLE_MIN;
-  GDefaultMeta.Generation := 0;
-  AddSelect(SerifDrawStyleItem, #$30B9#$30BF#$30A4#$30EB,
-    SERIF_DRAW_STYLE_MIN,
-    @GStyleList[0]);
-  AddData(SerifDrawStyleMetaItem,
-    #$30B9#$30BF#$30A4#$30EB#$7BA1#$7406,
-    PWideChar(@GDefaultMeta), SizeOf(GDefaultMeta));
+  Choices[10].Name := nil;
+  AddSelect(StyleItem, 'スタイル', 0, @Choices[0]);
 end;
 
-function CurrentSerifDrawStyleNo: Integer;
+procedure AddSerifDrawStyleInternalItems;
 begin
-  Result := ClampStyleNo(SerifDrawStyleItem.Value);
+  AddGroup(InternalGroup, '内部データ', 0);
+  AddString(StyleIDItem, 'StyleID', '');
+  AddString(StyleUIDItem, 'StyleUID', '');
+  AddString(StyleAnimationUIDItem, 'StyleAnimationUID', '');
 end;
 
-function CurrentSerifDrawStyleGeneration: UInt64;
-var
-  Meta: TSerifDrawStyleMeta;
+function CurrentSerifDrawStyleID: string;
 begin
-  if TryCurrentMeta(Meta) and
-    (Meta.StyleNo = Cardinal(CurrentSerifDrawStyleNo)) then
-    Result := Meta.Generation
-  else
-    Result := 0;
+  // 番号から安定した内部IDを作り、別オブジェクトでも同じ共有先を参照する。
+  if (StyleItem.Value < 0) or (StyleItem.Value > 9) then
+    Result := SerifStyleSlotID(0)
+  else Result := SerifStyleSlotID(StyleItem.Value);
 end;
 
-procedure SetCurrentSerifDrawStyleMeta(const AStyleNo: Integer;
-  const AGeneration: UInt64);
-var
-  Meta: TSerifDrawStyleMeta;
+function TryStyle(out Style: TSerifSharedStyle): Boolean;
 begin
-  Meta.Magic := SERIF_DRAW_STYLE_META_MAGIC;
-  Meta.Version := SERIF_DRAW_STYLE_META_VERSION;
-  Meta.StyleNo := ClampStyleNo(AStyleNo);
-  Meta.Generation := AGeneration;
-  if (SerifDrawStyleMetaItem.Value <> nil) and
-    (SerifDrawStyleMetaItem.Size >= SizeOf(Meta)) then
-    Move(Meta, SerifDrawStyleMetaItem.Value^, SizeOf(Meta));
+  Result := (Channel <> nil) and Channel.Find(CurrentSerifDrawStyleID, Style);
 end;
 
-function NewSerifDrawStyleGeneration: UInt64;
-var
-  FileTime: TFileTime;
-  Candidate: UInt64;
+function IsCurrentGeneration(const Style: TSerifSharedStyle): Boolean;
 begin
-  GetSystemTimeAsFileTime(FileTime);
-  Candidate := UInt64(FileTime.dwLowDateTime) or
-    (UInt64(FileTime.dwHighDateTime) shl 32);
-  EnterCriticalSection(GLock);
-  try
-    if Candidate <= GLastGeneration then
-      Candidate := GLastGeneration + 1;
-    GLastGeneration := Candidate;
-    Result := Candidate;
-  finally
-    LeaveCriticalSection(GLock);
-  end;
-end;
-
-procedure PublishSerifDrawStyle(const AStyleNo: Integer;
-  const AGeneration: UInt64; const ASettingsText: string);
-var
-  StyleNo: Integer;
-begin
-  StyleNo := ClampStyleNo(AStyleNo);
-  EnterCriticalSection(GLock);
-  try
-    if (not GCache[StyleNo].HasValue) or
-      (AGeneration > GCache[StyleNo].Generation) then
-    begin
-      GCache[StyleNo].HasValue := True;
-      GCache[StyleNo].Generation := AGeneration;
-      GCache[StyleNo].SettingsText := ASettingsText;
-    end;
-  finally
-    LeaveCriticalSection(GLock);
-  end;
+  Result := (StyleIDItem.Value <> nil) and (StyleUIDItem.Value <> nil) and
+    SameText(string(StyleIDItem.Value), Style.ID) and
+    (string(StyleUIDItem.Value) = Style.UID) and (Style.UID <> '');
 end;
 
 function ResolveSerifDrawStyleText(const ALocalText: string): string;
-var
-  Generation: UInt64;
-  StyleNo: Integer;
+var S: TSerifSharedStyle;
 begin
-  StyleNo := CurrentSerifDrawStyleNo;
-  Generation := CurrentSerifDrawStyleGeneration;
-  EnterCriticalSection(GLock);
-  try
-    if not GCache[StyleNo].HasValue then
-    begin
-      GCache[StyleNo].HasValue := True;
-      GCache[StyleNo].Generation := Generation;
-      GCache[StyleNo].SettingsText := ALocalText;
-    end
-    else if Generation > GCache[StyleNo].Generation then
-    begin
-      GCache[StyleNo].Generation := Generation;
-      GCache[StyleNo].SettingsText := ALocalText;
-    end;
-    Result := GCache[StyleNo].SettingsText;
-{$IFDEF DEBUG}
-    if (Generation < GCache[StyleNo].Generation) and
-      (ALocalText <> Result) then
-      SerifDrawDebugLog(Format(
-        'Style cache applied: style=%d local_generation=%d cache_generation=%d',
-        [StyleNo, Generation, GCache[StyleNo].Generation]));
-{$ENDIF}
-  finally
-    LeaveCriticalSection(GLock);
-  end;
+  Result := ALocalText;
+  if TryStyle(S) and not IsCurrentGeneration(S) then Result := S.Settings;
+end;
+
+function TryResolveSerifDrawStyleAnimation(out Text: string): Boolean;
+var S: TSerifSharedStyle;
+begin
+  Text := '';
+  Result := TryStyle(S) and (S.Animation <> '');
+  if not Result then Exit;
+  Result := not ((StyleIDItem.Value <> nil) and (StyleAnimationUIDItem.Value <> nil) and
+    SameText(string(StyleIDItem.Value), S.ID) and (string(StyleAnimationUIDItem.Value) = S.UID));
+  if Result then Text := S.Animation;
+end;
+
+function ResolvedSerifDrawStyleUID: string;
+var S: TSerifSharedStyle;
+begin
+  Result := '';
+  if TryStyle(S) then Result := S.UID;
+end;
+
+function SerifDrawStyleStatus: string;
+var S: TSerifSharedStyle;
+begin
+  if not TryStyle(S) then Result := '共有スタイル未保存: 自身の設定で表示'
+  else if IsCurrentGeneration(S) then Result := S.Name + ': 自身の設定（最新世代）'
+  else Result := S.Name + ': 共有側の最新設定で表示（読み込みで自身へ取得）';
+end;
+
+procedure WriteObjectValue(Edit: PEDIT_SECTION; const Name, Text: string);
+var Obj: OBJECT_HANDLE; Value: UTF8String; Profile: TSerifDrawPluginProfile;
+begin
+  if (Edit = nil) or not Assigned(Edit^.GetFocusObject) or
+    not Assigned(Edit^.SetObjectItemValue) then
+    raise Exception.Create('保存対象のオブジェクトを取得できません。');
+  Obj := Edit^.GetFocusObject();
+  if Obj = nil then raise Exception.Create('保存対象のオブジェクトがありません。');
+  Profile := CurrentSerifDrawPluginProfile;
+  Value := UTF8String(Text);
+  if not Edit^.SetObjectItemValue(Obj, PWideChar(Profile.EffectName), PWideChar(Name), PAnsiChar(Value)) then
+    raise Exception.Create('オブジェクトの値を保存できませんでした: ' + Name);
+end;
+
+procedure SetCurrentSerifDrawStyleVersion(Edit: PEDIT_SECTION; const UID: string);
+begin
+  WriteObjectValue(Edit, 'StyleID', CurrentSerifDrawStyleID);
+  WriteObjectValue(Edit, 'StyleUID', UID);
+end;
+
+procedure SaveCurrentSerifDrawStyle(Edit: PEDIT_SECTION; const LocalText: string);
+var S, Published: TSerifSharedStyle; Profile: TSerifDrawPluginProfile;
+begin
+  if Channel = nil then Exit;
+  S.ID := CurrentSerifDrawStyleID;
+  S.Settings := LocalText;
+  S.Animation := EncodeSerifDrawAnimation(LocalSerifDrawAnimationParameters);
+  // 共有側の解決済み値ではなく、必ず自身の保存データを公開する。
+  if not Channel.Request('save', S) then
+    raise Exception.Create('スタイルを保存できませんでした。拡張側でセリフプロジェクトを開いてください。');
+  if not Channel.Find(S.ID, Published) then
+    raise Exception.Create('保存したスタイルを確認できませんでした。');
+  Profile := CurrentSerifDrawPluginProfile;
+  WriteObjectValue(Edit, Profile.SettingsItemName, LocalText);
+  WriteObjectValue(Edit, 'StyleAnimationUID', Published.UID);
+  SetCurrentSerifDrawStyleVersion(Edit, Published.UID);
+end;
+
+procedure LoadCurrentSerifDrawStyle(Edit: PEDIT_SECTION);
+var S: TSerifSharedStyle; Profile: TSerifDrawPluginProfile;
+begin
+  if not TryStyle(S) then
+    raise Exception.Create('選択中のスタイルはまだ共有側に保存されていません。');
+  Profile := CurrentSerifDrawPluginProfile;
+  LoadSerifDrawAnimation(Edit, Profile.EffectName, S.Animation);
+  WriteObjectValue(Edit, Profile.SettingsItemName, S.Settings);
+  WriteObjectValue(Edit, 'StyleAnimationUID', S.UID);
+  SetCurrentSerifDrawStyleVersion(Edit, S.UID);
 end;
 
 initialization
-  InitializeCriticalSection(GLock);
-
 finalization
-  DeleteCriticalSection(GLock);
-
+  Channel.Free;
 end.

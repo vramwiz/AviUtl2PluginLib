@@ -6,6 +6,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Types,
   AviUtl2FilterTypes,
   PluginFilterSerifDrawAnimationTypes,
   PluginFilterSerifDrawReceiver,
@@ -17,6 +18,9 @@ type
   private
     FCache: TObject;
     FCompositePixels: TBytes;
+    FFrameOverlay: TBytes;
+    FFrameOverlayBounds: TRect;
+    FFrameOverlaySignature: string;
     FFrameRoleNames: TArray<string>;
     FImage: TTextRenderImage;
     FRoleNameItems: TObject;
@@ -71,7 +75,6 @@ implementation
 uses
   System.Generics.Collections,
   System.Math,
-  System.Types,
   System.UITypes,
   Winapi.Windows,
   PluginFilterSerifDrawDebugLog,
@@ -938,8 +941,8 @@ begin
           EffectBounds.Left;
         EffectY := LayoutY + Image.Bounds.Top - Image.LayoutBounds.Top -
           EffectBounds.Top;
-        SerifDrawSplitBand(Combined.Height, I, Images.Count,
-          BandTop, BandBottom);
+        SerifDrawSplitLayoutBand(LayoutHeight, EffectBounds.Top,
+          Combined.Height, I, Images.Count, BandTop, BandBottom);
         MotionImage := MotionImages[I];
         if MotionImage <> nil then
         begin
@@ -1576,6 +1579,7 @@ var
   RoleOffset: TPoint;
   RoleRect: TRect;
   RoleTransform: TSerifDrawAnimationTransform;
+  FrameSignature: string;
   Width: Integer;
 {$IFDEF DEBUG}
   FrameMilliseconds: Double;
@@ -1611,8 +1615,22 @@ begin
   GetImageMilliseconds := SerifDrawTimerElapsedMilliseconds(StageStarted);
   StageStarted := SerifDrawTimerStart;
 {$ENDIF}
-  CompositeSerifDrawFrames(FCompositePixels, Width, Height, FSettings,
-    FFrameRoleNames);
+  FrameSignature := IntToStr(Width) + 'x' + IntToStr(Height) + ':' +
+    FSettings.Encode;
+  if Length(FFrameRoleNames) > 0 then
+    FrameSignature := FrameSignature + ':' + FFrameRoleNames[High(FFrameRoleNames)];
+  if FrameSignature <> FFrameOverlaySignature then
+  begin
+    SetLength(FFrameOverlay, ByteCount);
+    FillChar(FFrameOverlay[0], ByteCount, 0);
+    CompositeSerifDrawFrames(FFrameOverlay, Width, Height, FSettings,
+      FFrameRoleNames);
+    FFrameOverlayBounds := SerifDrawFrameOverlayBounds(FFrameOverlay,
+      Width, Height);
+    FFrameOverlaySignature := FrameSignature;
+  end;
+  BlendSerifDrawFrameOverlay(FCompositePixels, FFrameOverlay, Width, Height,
+    FFrameOverlayBounds);
 {$IFDEF DEBUG}
   FrameMilliseconds := SerifDrawTimerElapsedMilliseconds(StageStarted);
   StageStarted := SerifDrawTimerStart;

@@ -179,7 +179,7 @@ implementation
 
 {$R *.dfm}
 
-uses  AppFolderUtils, System.IOUtils,AviUtl2StyleColors,
+uses  SerifStyleProject, AppFolderUtils, System.IOUtils,AviUtl2StyleColors,
        SerifCharaVectorResource,
        SerifVoicevoxDebugLog,SerifToolbarIcons,
        SerifProjectSession,SerifProjectAviUtlSync,SerifProjectLifecycle,
@@ -505,11 +505,18 @@ end;
 
 procedure TFrameSerif.SwitchToEmptyProject(const Folder,
   ProjectFilePath: string);
+var
+  SourceFolder: string;
 begin
   if Trim(Folder) = '' then Exit;
-  CloseProject;
-  ShowProjectFolder(Folder);
+  SourceFolder := FSelectFolder;
+  // 直近のUI変更を確実に設定ファイルへ反映してから、新しい保存先へ
+  // 台本以外の設定だけをコピーする。
   SaveSerifProjectData(FScenes, FCharas, FWatchers, FConfig);
+  CloseProject;
+  if not InitializeEmptySerifProjectFolder(Folder) then Exit;
+  CopySerifProjectSettings(SourceFolder, Folder);
+  ShowProjectFolder(Folder);
   RegisterAutomaticProject(Folder, ProjectFilePath);
   SyncProjectAndScene;
 end;
@@ -557,6 +564,7 @@ begin
     FSelectFolder := folder;
   end;
 
+  OpenSerifStyleProject(folder);
   WriteSerifAviUtlProjectFolder(folder);
   TabView;
   FTBarManager.Activate(0);

@@ -18,11 +18,15 @@ function SerifDrawRoleNameDisplayText(const AVisibleCount: Integer;
 // 高さをACount個の連続した帯へ分割し、AIndex番目の上端と下端を返す。
 procedure SerifDrawSplitBand(const AHeight, AIndex, ACount: Integer;
   out ATop, ABottom: Integer);
+// 効果画像の余白ではなく文字レイアウト上で帯を等分する。
+procedure SerifDrawSplitLayoutBand(const ALayoutHeight, AEffectTop,
+  AEffectHeight, AIndex, ACount: Integer; out ATop, ABottom: Integer);
 
 implementation
 
 uses
   System.Generics.Collections,
+  System.Math,
   System.SysUtils,
   PluginFilterSerifDrawRoleNames;
 
@@ -96,6 +100,30 @@ begin
   end;
   ATop := AHeight * AIndex div ACount;
   ABottom := AHeight * (AIndex + 1) div ACount;
+end;
+
+procedure SerifDrawSplitLayoutBand(const ALayoutHeight, AEffectTop,
+  AEffectHeight, AIndex, ACount: Integer; out ATop, ABottom: Integer);
+var
+  LayoutTop, LayoutBottom: Integer;
+begin
+  if (ALayoutHeight <= 0) or (AEffectHeight <= 0) or (ACount <= 0) or
+    (AIndex < 0) or (AIndex >= ACount) then
+  begin
+    ATop := 0;
+    ABottom := 0;
+    Exit;
+  end;
+  SerifDrawSplitBand(ALayoutHeight, AIndex, ACount,
+    LayoutTop, LayoutBottom);
+  if AIndex = 0 then
+    ATop := 0
+  else
+    ATop := EnsureRange(LayoutTop - AEffectTop, 0, AEffectHeight);
+  if AIndex = ACount - 1 then
+    ABottom := AEffectHeight
+  else
+    ABottom := EnsureRange(LayoutBottom - AEffectTop, 0, AEffectHeight);
 end;
 
 end.

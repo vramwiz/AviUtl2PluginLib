@@ -32,6 +32,9 @@ type
 
 const
   ACTIVE_RENDER_BACKEND = TSerifDrawRenderBackend.Skia;
+{$IFDEF DEBUG}
+  VIDEO_DIAGNOSTIC_INTERVAL_MS = 1000;
+{$ENDIF}
 
 var
   GGdiPlusRender: TSerifGdiPlusRender;
@@ -40,6 +43,9 @@ var
   GRenderLock: TRTLCriticalSection;
   GSkiaRender: TSerifSkiaRender;
   GAnimationController: TSerifDrawAnimationController;
+{$IFDEF DEBUG}
+  GLastVideoDiagnosticTick: UInt64;
+{$ENDIF}
 
 function InitializeSerifDrawPlugin: Boolean;
 begin
@@ -123,24 +129,56 @@ var
   Snapshots: TArray<TSerifDrawSnapshot>;
   ValidatedLayers: TArray<Integer>;
 {$IFDEF DEBUG}
+  AnimationMs: Double;
+  CaptureMs: Double;
+  DiagnosticTick: UInt64;
   I: Integer;
+  LockStart: Int64;
+  LockWaitMs: Double;
+  LogDiagnostics: Boolean;
   ObjectFrame: Integer;
   ObjectStart: Integer;
+  ProcessStart: Int64;
+  ReceiveMs: Double;
+  RenderMs: Double;
+  StageStart: Int64;
+  SubmitMs: Double;
+  TotalMs: Double;
 {$ENDIF}
   Layer: Integer;
 {$IFDEF DEBUG}
   LayerIsValidated: Boolean;
 {$ENDIF}
 begin
+{$IFDEF DEBUG}
+  ProcessStart := SerifDrawTimerStart;
+  StageStart := SerifDrawTimerStart;
+{$ENDIF}
   try
     if (GGdiPlusRender = nil) and (GSkiaRender = nil) and
       not InitializeSerifDrawPlugin then
       Exit;
     CaptureSerifDrawFrame(Video);
+{$IFDEF DEBUG}
+    CaptureMs := SerifDrawTimerElapsedMilliseconds(StageStart);
+{$ENDIF}
     if (GSkiaRender <> nil) and (GReceiver <> nil) then
     begin
+{$IFDEF DEBUG}
+      LockStart := SerifDrawTimerStart;
+{$ENDIF}
       EnterCriticalSection(GRenderLock);
       try
+{$IFDEF DEBUG}
+        LockWaitMs := SerifDrawTimerElapsedMilliseconds(LockStart);
+        DiagnosticTick := GetTickCount64;
+        LogDiagnostics := (GLastVideoDiagnosticTick = 0) or
+          (DiagnosticTick - GLastVideoDiagnosticTick >=
+           VIDEO_DIAGNOSTIC_INTERVAL_MS);
+        if LogDiagnostics then
+          GLastVideoDiagnosticTick := DiagnosticTick;
+        StageStart := SerifDrawTimerStart;
+{$ENDIF}
         if (Video <> nil) and (Video^.Object_ <> nil) then
         begin
           CurrentFrame := Video^.Object_^.FrameS + Video^.Object_^.Frame;
@@ -179,6 +217,7 @@ begin
 {$ENDIF}
                 end;
 {$IFDEF DEBUG}
+                if LogDiagnostics then
                 SerifDrawDebugLog(Format(
                   'Video source evaluated: frame=%d shared_layer=%d sdk_layer=%d validated=%d',
                   [CurrentFrame, Layer, Layer - 1,
@@ -193,36 +232,59 @@ begin
         Snapshots := GReceiver.ReadActive(CurrentFrame, ValidatedLayers);
         GLastSnapshots := System.Copy(Snapshots, 0, Length(Snapshots));
 {$IFDEF DEBUG}
-        SerifDrawDebugLog(Format(
-          'Video receive: frame=%d fps=%.3f snapshots=%d object_start=%d object_frame=%d',
-          [CurrentFrame, Fps, Length(Snapshots), ObjectStart,
-           ObjectFrame]));
-        for I := 0 to High(Snapshots) do
+        ReceiveMs := SerifDrawTimerElapsedMilliseconds(StageStart);
+        if LogDiagnostics then
+        begin
           SerifDrawDebugLog(Format(
-            'Video snapshot: index=%d layer=%d source=%s uid=%d serif=%d timeline=%d/%d speech=%d progress=%.4f',
-            [I, Snapshots[I].Layer, Snapshots[I].SourceObjectID,
-             Length(Snapshots[I].UID), Length(Snapshots[I].Serif),
-             Snapshots[I].TimelineFrame,
-             Snapshots[I].TimelineTotalFrames,
-             Ord(Snapshots[I].SpeechActive),
-             Snapshots[I].SpeechProgress]));
+            'Video receive: frame=%d fps=%.3f snapshots=%d object_start=%d object_frame=%d',
+            [CurrentFrame, Fps, Length(Snapshots), ObjectStart,
+             ObjectFrame]));
+          for I := 0 to High(Snapshots) do
+            SerifDrawDebugLog(Format(
+              'Video snapshot: index=%d layer=%d source=%s uid=%d serif=%d timeline=%d/%d speech=%d progress=%.4f',
+              [I, Snapshots[I].Layer, Snapshots[I].SourceObjectID,
+               Length(Snapshots[I].UID), Length(Snapshots[I].Serif),
+               Snapshots[I].TimelineFrame,
+               Snapshots[I].TimelineTotalFrames,
+               Ord(Snapshots[I].SpeechActive),
+               Snapshots[I].SpeechProgress]));
+        end;
+        StageStart := SerifDrawTimerStart;
 {$ENDIF}
         AnimationParameters := CurrentSerifDrawAnimationParameters;
         AnimationTransform := GAnimationController.Update(Snapshots,
           CurrentFrame, Fps, AnimationParameters, RenderSnapshots);
 {$IFDEF DEBUG}
-        SerifDrawDebugLog(Format(
-          'Video animation: frame=%d input=%d rendered=%d visible=%d alpha=%.4f offset=(%.3f,%.3f) scale=(%.4f,%.4f) rotation=%.3f blur=%.3f reveal=%d/%.4f',
-          [CurrentFrame, Length(Snapshots), Length(RenderSnapshots),
-           Ord(AnimationTransform.Visible), AnimationTransform.Alpha,
-           AnimationTransform.OffsetX, AnimationTransform.OffsetY,
-           AnimationTransform.ScaleX, AnimationTransform.ScaleY,
-           AnimationTransform.RotationDegrees, AnimationTransform.BlurRadius,
-           Ord(AnimationTransform.RevealMode),
-           AnimationTransform.RevealProgress]));
+        AnimationMs := SerifDrawTimerElapsedMilliseconds(StageStart);
+        if LogDiagnostics then
+          SerifDrawDebugLog(Format(
+            'Video animation: frame=%d input=%d rendered=%d visible=%d alpha=%.4f offset=(%.3f,%.3f) scale=(%.4f,%.4f) rotation=%.3f blur=%.3f reveal=%d/%.4f',
+            [CurrentFrame, Length(Snapshots), Length(RenderSnapshots),
+             Ord(AnimationTransform.Visible), AnimationTransform.Alpha,
+             AnimationTransform.OffsetX, AnimationTransform.OffsetY,
+             AnimationTransform.ScaleX, AnimationTransform.ScaleY,
+             AnimationTransform.RotationDegrees, AnimationTransform.BlurRadius,
+             Ord(AnimationTransform.RevealMode),
+             AnimationTransform.RevealProgress]));
+        StageStart := SerifDrawTimerStart;
 {$ENDIF}
         GSkiaRender.Update(RenderSnapshots, Settings, AnimationParameters);
+{$IFDEF DEBUG}
+        RenderMs := SerifDrawTimerElapsedMilliseconds(StageStart);
+        StageStart := SerifDrawTimerStart;
+{$ENDIF}
         GSkiaRender.SendToAviUtl2(Video, AnimationTransform);
+{$IFDEF DEBUG}
+        SubmitMs := SerifDrawTimerElapsedMilliseconds(StageStart);
+        TotalMs := SerifDrawTimerElapsedMilliseconds(ProcessStart);
+        if LogDiagnostics then
+          SerifDrawDebugLog(Format(
+            'Video performance: frame=%d capture=%.3f lock_wait=%.3f receive=%.3f animation=%.3f render=%.3f submit=%.3f process=%.3f indexed=%d validated=%d snapshots=%d rendered=%d',
+            [CurrentFrame, CaptureMs, LockWaitMs, ReceiveMs, AnimationMs,
+             RenderMs, SubmitMs, TotalMs, Length(IndexedLayers),
+             Length(ValidatedLayers), Length(Snapshots),
+             Length(RenderSnapshots)]));
+{$ENDIF}
       finally
         LeaveCriticalSection(GRenderLock);
       end;

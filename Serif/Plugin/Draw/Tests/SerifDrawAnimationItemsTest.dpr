@@ -48,7 +48,7 @@ begin
   Require((string(BeforeTypeItem.Name) = '前 種類') and
     (string(BeforeDirectionItem.Name) = '前 方向') and
     (string(BeforeZoomOriginItem.Name) = '前 奥行き') and
-    (string(BeforeValue1Item.Name) = '前 値1') and
+    (string(BeforeValue1CompatibilityItem.Name) = '前 値1') and
     (string(DuringEmotionItem.Name) = '常時 感情表現') and
     (string(DuringSpeedItem.Name) = '常時 速さ') and
     (string(SyncTypeItem.Name) = '同期 種類') and
@@ -57,8 +57,10 @@ begin
     (string(AfterTypeItem.Name) = '後 種類') and
     (string(AfterDirectionItem.Name) = '後 方向') and
     (string(AfterZoomDestinationItem.Name) = '後 奥行き') and
-    (string(AfterValue1Item.Name) = '後 値1') and
-    (AfterValue1Item.Value = 0.0),
+    (string(AfterValue1CompatibilityItem.Name) = '後 値1') and
+    (string(BeforeValue1CompatibilityItem.ItemType) = 'data') and
+    (string(AfterValue1CompatibilityItem.ItemType) = 'data') and
+    (AfterValue1CompatibilityItem.Size = SizeOf(Double)),
     'Animation parameter labels mismatch.');
   Require((BeforeTypeItem.Value = 0) and (SyncTypeItem.Value = 0) and
     (AfterTypeItem.Value = 0),

@@ -25,7 +25,7 @@ uses
   PluginFilterTable;
 
 var
-  SettingsButton: TFILTER_ITEM_BUTTON;
+  SettingsButton, StyleSaveButton, StyleLoadButton: TFILTER_ITEM_BUTTON;
 
 procedure SettingsButtonCallback(Edit: PEDIT_SECTION); cdecl;
 var
@@ -34,7 +34,7 @@ var
   BackgroundStatus: string;
   BackgroundWidth: Integer;
   CurrentSettings: TSerifDrawSettings;
-  CurrentText: string;
+  CurrentText, ExpectedStyleUID: string;
   ErrorText: string;
   FocusObject: OBJECT_HANDLE;
   Form: TFormSerifDrawSettings;
@@ -42,11 +42,11 @@ var
   SelectedSettings: TSerifDrawSettings;
   SelectedText: string;
   Utf8Text: UTF8String;
-  Generation: UInt64;
 begin
   try
     Profile := CurrentSerifDrawPluginProfile;
     SerifDrawDebugLog('Settings button clicked.');
+    ExpectedStyleUID := ResolvedSerifDrawStyleUID;
     CurrentText := '';
     if Assigned(SerifDrawSettingsItem.Value) then
       CurrentText := string(SerifDrawSettingsItem.Value);
@@ -69,6 +69,7 @@ begin
         Form.SetBackgroundRgba(BackgroundPixels, BackgroundWidth,
           BackgroundHeight);
       Form.SetCaptureStatus(BackgroundStatus);
+      Form.Caption := Form.Caption + ' - ' + SerifDrawStyleStatus;
       Form.LoadSettings(CurrentSettings);
       Form.SetSnapshots(CopyKnownSerifDrawSnapshots);
       Form.ShowModal;
@@ -103,9 +104,7 @@ begin
           mtError, [mbOK], 0);
         Exit;
       end;
-      Generation := NewSerifDrawStyleGeneration;
-      SetCurrentSerifDrawStyleMeta(CurrentSerifDrawStyleNo, Generation);
-      PublishSerifDrawStyle(CurrentSerifDrawStyleNo, Generation, SelectedText);
+      SetCurrentSerifDrawStyleVersion(Edit, ExpectedStyleUID);
       SerifDrawDebugLog('Settings saved: ' + SelectedText);
     finally
       Form.Free;
@@ -118,6 +117,32 @@ begin
       MessageDlg('設定画面を開けませんでした。' + sLineBreak + E.Message,
         mtError, [mbOK], 0);
     end;
+  end;
+end;
+
+procedure StyleSaveButtonCallback(Edit: PEDIT_SECTION); cdecl;
+var Text: string; Settings: TSerifDrawSettings;
+begin
+  try
+    Text := '';
+    if SerifDrawSettingsItem.Value <> nil then Text := string(SerifDrawSettingsItem.Value);
+    if Text = '' then
+    begin
+      Settings := TSerifDrawSettings.Default;
+      Text := Settings.Encode;
+    end;
+    SaveCurrentSerifDrawStyle(Edit, Text);
+  except
+    on E: Exception do MessageDlg(E.Message, mtError, [mbOK], 0);
+  end;
+end;
+
+procedure StyleLoadButtonCallback(Edit: PEDIT_SECTION); cdecl;
+begin
+  try
+    LoadCurrentSerifDrawStyle(Edit);
+  except
+    on E: Exception do MessageDlg(E.Message, mtError, [mbOK], 0);
   end;
 end;
 
@@ -142,8 +167,11 @@ begin
       nil);
     AddButton(SettingsButton, '設定', SettingsButtonCallback);
     AddSerifDrawStyleItems;
-    AddString(SerifDrawSettingsItem, PWideChar(Profile.SettingsItemName), '');
+    AddButton(StyleSaveButton, 'スタイルを保存', StyleSaveButtonCallback);
+    AddButton(StyleLoadButton, '読み込み', StyleLoadButtonCallback);
     AddSerifDrawAnimationItems;
+    AddSerifDrawStyleInternalItems;
+    AddString(SerifDrawSettingsItem, PWideChar(Profile.SettingsItemName), '');
   end;
   Result := @GTable;
 end;
