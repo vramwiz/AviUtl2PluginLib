@@ -49,6 +49,9 @@ type
       Button: TToolButton; State: TCustomDrawState; var DefaultDraw: Boolean);
     procedure SaveExpressionPage;
     procedure ShowSettingPage(Page: TMmdModelSettingPage);
+  protected
+    // ページ固有の追加UIが切替後の表示状態を同期できるようにする。
+    procedure SettingPageChanged(Page: TMmdModelSettingPage); virtual;
   public
     // 初期状態では全ページ、モデルフィルターではポーズ・表情だけ、
     // PoseOnly／FaceOnlyでは切替ツールバーなしで対象ページだけを表示する。
@@ -70,6 +73,7 @@ type
     property LipSyncPanel: TMmdLipSyncSettingPanel read FLipSyncPanel;
     property ModeToolbar: TToolBar read FModeToolbar;
     property CommitPanel: TDarkPanel read FCommitPanel;
+    property CurrentSettingPage: TMmdModelSettingPage read FCurrentPage;
     property SaveButton: TMmdDarkButton read FSaveButton;
     // 表情ウェイトの実編集時に最新JSONを通知する。外部からの初期化では発火しない。
     property OnExpressionDataChanged: TMmdExpressionDataChangedEvent
@@ -92,6 +96,11 @@ procedure TMmdModelSettingEditorForm.ModeButtonClick(Sender: TObject);
 begin
   if Sender is TToolButton then
     ShowSettingPage(TMmdModelSettingPage(TToolButton(Sender).Tag));
+end;
+
+procedure TMmdModelSettingEditorForm.SettingPageChanged(
+  Page: TMmdModelSettingPage);
+begin
 end;
 
 procedure TMmdModelSettingEditorForm.ExpressionWeightsChanged(Sender: TObject);
@@ -155,6 +164,7 @@ begin
     FViewport.ReadOnly := False;
     FViewport.SetDisplayVisibility(True, True);
     FViewport.ResetPreviewCamera;
+    SettingPageChanged(Page);
     Exit;
   end;
   if Page = mspEyeBlink then
@@ -167,6 +177,7 @@ begin
     FViewport.SetDisplayVisibility(True, False);
     EyeBlinkSettingChanged(nil);
     FViewport.FocusPreviewFace(3.2);
+    SettingPageChanged(Page);
     Exit;
   end;
   if Page = mspLipSync then
@@ -179,6 +190,7 @@ begin
     FViewport.SetDisplayVisibility(True, False);
     LipSyncSettingChanged(nil);
     FViewport.FocusPreviewFace(3.2);
+    SettingPageChanged(Page);
     Exit;
   end;
   if Page = mspExpression then
@@ -202,6 +214,7 @@ begin
   FViewport.ReadOnly := True;
   FViewport.SetDisplayVisibility(True, False);
   FViewport.FocusPreviewFace(3.2);
+  SettingPageChanged(Page);
 end;
 
 procedure TMmdModelSettingEditorForm.InitializeExpression(

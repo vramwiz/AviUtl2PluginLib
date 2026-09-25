@@ -27,7 +27,8 @@ type
     // 保持中のGPUバッファを現在のRenderTargetへ描画してPresentする。
     procedure Render;
     // 画面上のモデル三角形と骨格オーバーレイの表示可否を切り替える。
-    procedure SetDisplayVisibility(ModelVisible, OverlayVisible: Boolean);
+    procedure SetDisplayVisibility(ModelVisible, OverlayVisible: Boolean;
+      MarkerOnlyVisible: Boolean = False);
     // 現在のカメラと表示寸法のまま、骨格を除くモデル描画を32bit Bitmapへ取得する。
     function CaptureModelImage(Bitmap: Vcl.Graphics.TBitmap): Boolean;
     // SwapChainと深度バッファを指定サイズへ作り直す。0以下のサイズは無視する。
@@ -80,6 +81,7 @@ type
     FHasFrame: Boolean;
     FModelVisible: Boolean;
     FOverlayVisible: Boolean;
+    FMarkerOnlyVisible: Boolean;
     FTriangleBuffer: ID3D11Buffer;
     FTriangleCapacity: Integer;
     FTriangleCount: Cardinal;
@@ -101,7 +103,8 @@ type
     destructor Destroy; override;
     function CaptureModelImage(Bitmap: Vcl.Graphics.TBitmap): Boolean;
     procedure Render;
-    procedure SetDisplayVisibility(ModelVisible, OverlayVisible: Boolean);
+    procedure SetDisplayVisibility(ModelVisible, OverlayVisible,
+      MarkerOnlyVisible: Boolean);
     procedure Resize(Width, Height: Integer);
     procedure SetScene(Model: TPmxModel; const Poses: TPmxBonePoses;
       const MorphWeights: TPmxMorphWeights; const SelectedTarget,
@@ -197,7 +200,8 @@ begin
       BuildPreviewSceneWithFrame(Model, Poses, MorphWeights, SelectedTarget,
         HoverTarget, FCenter, FProjection, Scene);
     BuildPreviewBoneShapes(Scene.Joints, Scene.BoneSegments, SelectedTarget,
-      HoverTarget, Scene.Projection.ModelHeight, Scene.BoneShapes);
+      HoverTarget, Scene.Projection.ModelHeight, Scene.BoneShapes,
+      FMarkerOnlyVisible);
     UpdatePreviewVertexBuffer(FDevice, FContext, Scene.Triangles,
       FTriangleBuffer, FTriangleCapacity);
     FTriangleCount := Length(Scene.Triangles);
@@ -241,7 +245,7 @@ begin
     BuildPreviewSkeleton(Model, Poses, MorphWeights, SelectedTarget,
       HoverTarget, FCenter, BoneLines, Segments, Joints);
     BuildPreviewBoneShapes(Joints, Segments, SelectedTarget, HoverTarget,
-      FProjection.ModelHeight, BoneShapes);
+      FProjection.ModelHeight, BoneShapes, FMarkerOnlyVisible);
     FOverlay.Update(FDevice, FContext, BoneLines, BoneShapes, Segments, Joints);
     FErrorText := '';
   except
@@ -286,6 +290,7 @@ var
   Offset: Cardinal;
   Stride: Cardinal;
   Viewport: TD3D11_VIEWPORT;
+  ShowMarker: Boolean;
 begin
   if (FContext = nil) or (FRenderTarget = nil) then
     Exit;
@@ -314,7 +319,8 @@ begin
       FContext.Draw(Batch.VertexCount, Batch.FirstVertex);
     end;
   end;
-  if IncludeOverlay and FOverlay.HasVertices then
+  ShowMarker := FMarkerOnlyVisible and PresentFrame and FOverlay.HasShapes;
+  if (IncludeOverlay and FOverlay.HasVertices) or ShowMarker then
   begin
     // 編集対象の確認を優先し、モデルに隠れる骨格形状も常に前面へ重ねる。
     FContext.ClearDepthStencilView(FDepthView, D3D11_CLEAR_DEPTH, 1.0, 0);
@@ -322,6 +328,8 @@ begin
   end;
   if IncludeOverlay then
     FOverlay.Render(FContext, Stride, Offset);
+  if not IncludeOverlay and ShowMarker then
+    FOverlay.Render(FContext, Stride, Offset, False);
   if PresentFrame then
     FSwapChain.Present(1, 0);
 end;
@@ -332,10 +340,11 @@ begin
 end;
 
 procedure TMmdD3DRendererImpl.SetDisplayVisibility(ModelVisible,
-  OverlayVisible: Boolean);
+  OverlayVisible, MarkerOnlyVisible: Boolean);
 begin
   FModelVisible := ModelVisible;
   FOverlayVisible := OverlayVisible;
+  FMarkerOnlyVisible := MarkerOnlyVisible;
 end;
 
 function TMmdD3DRendererImpl.CaptureModelImage(
@@ -392,10 +401,10 @@ begin
 end;
 
 procedure TMmdD3DRenderer.SetDisplayVisibility(ModelVisible,
-  OverlayVisible: Boolean);
+  OverlayVisible, MarkerOnlyVisible: Boolean);
 begin
   TMmdD3DRendererImpl(FImpl).SetDisplayVisibility(ModelVisible,
-    OverlayVisible);
+    OverlayVisible, MarkerOnlyVisible);
 end;
 
 function TMmdD3DRenderer.CaptureModelImage(

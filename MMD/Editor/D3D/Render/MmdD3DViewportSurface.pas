@@ -53,7 +53,8 @@ type
     // 現在の表示寸法とカメラで、骨格を除いたモデル画像を取得する。
     function CaptureModelImage(Bitmap: Vcl.Graphics.TBitmap): Boolean;
     // 確認用途に応じてモデルと骨格オーバーレイの表示を切り替える。
-    procedure SetDisplayVisibility(ModelVisible, OverlayVisible: Boolean);
+    procedure SetDisplayVisibility(ModelVisible, OverlayVisible: Boolean;
+      MarkerOnlyVisible: Boolean = False);
     property Camera: TMmdPreviewCamera read FCamera;
     property ErrorText: string read GetErrorText;
     property LoadedTextureCount: Integer read GetLoadedTextureCount;
@@ -196,10 +197,11 @@ begin
 end;
 
 procedure TMmdD3DViewportSurface.SetDisplayVisibility(ModelVisible,
-  OverlayVisible: Boolean);
+  OverlayVisible, MarkerOnlyVisible: Boolean);
 begin
   if FRenderer <> nil then
-    FRenderer.SetDisplayVisibility(ModelVisible, OverlayVisible);
+    FRenderer.SetDisplayVisibility(ModelVisible, OverlayVisible,
+      MarkerOnlyVisible);
   Invalidate;
 end;
 

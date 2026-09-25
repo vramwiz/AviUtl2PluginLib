@@ -11,7 +11,7 @@ uses
 procedure BuildPreviewBoneShapes(const Joints: TMmdPreviewJoints;
   const Segments: TMmdPreviewBoneSegments; const SelectedTarget,
   HoverTarget: TMmdPreviewTarget; ModelHeight: Single;
-  out Vertices: TMmdPreviewVertices);
+  out Vertices: TMmdPreviewVertices; SimpleMarker: Boolean = False);
 
 implementation
 
@@ -34,7 +34,7 @@ begin
   Vertex.NormalX := Normal.X;
   Vertex.NormalY := Normal.Y;
   Vertex.NormalZ := Normal.Z;
-  // 2は固定ピクセル球。位置は中心、法線は球面の単位オフセットとして渡す。
+  // 2は固定ピクセル球。法線の長さで通常球との表示径を分ける。
   Vertex.Lighting := 2.0;
 end;
 
@@ -55,7 +55,7 @@ var
   Position: TPmxVector3;
 begin
   Position := Center;
-  SetShapeVertex(Vertices[VertexIndex], Position, NormalizeVector(Offset),
+  SetShapeVertex(Vertices[VertexIndex], Position, Offset,
     R, G, B);
   Inc(VertexIndex);
 end;
@@ -95,7 +95,7 @@ end;
 procedure BuildPreviewBoneShapes(const Joints: TMmdPreviewJoints;
   const Segments: TMmdPreviewBoneSegments; const SelectedTarget,
   HoverTarget: TMmdPreviewTarget; ModelHeight: Single;
-  out Vertices: TMmdPreviewVertices);
+  out Vertices: TMmdPreviewVertices; SimpleMarker: Boolean);
 const
   SPHERE_VERTEX_COUNT = 4 * 8 * 6;
 var
@@ -106,8 +106,15 @@ var
 begin
   SetLength(Vertices, SPHERE_VERTEX_COUNT);
   VertexIndex := 0;
-  Radius := 1.0; // 画面上の半径はシェーダー側で固定する。
-  if SelectedTarget.Locked then
+  Radius := 1.0; // 通常の選択球は半径6px。
+  if SimpleMarker then
+  begin
+    Radius := 1.5; // 簡易操作の選択箇所は直径18px。
+    R := 0.08;
+    G := 0.9;
+    B := 1.0;
+  end
+  else if SelectedTarget.Locked then
   begin
     R := 0.55;
     G := 0.03;

@@ -62,6 +62,8 @@ type
       ASelectedBone: Integer);
     // 編集中の姿勢作業用コピーを呼び出し側へ返す。
     procedure CopyPoses(out APoses: TPmxBonePoses);
+    // 正規化した右スティック値でカメラを旋回・平行移動・拡縮する。
+    procedure AdjustCameraByGamepad(X, Y: Single; Pan, Zoom: Boolean);
     // 貼り付け画像をフォーム内の独立コピーとして保持し、半透明で重ねる。
     procedure SetReferenceImage(Bitmap: Vcl.Graphics.TBitmap);
     // 保持中の参照画像が描画可能な寸法を持つか返す。
@@ -92,6 +94,25 @@ uses
   MmdD3DLiveDragTest,
   MmdPoseSymmetry,
   PmxPoseMath;
+
+procedure TMmdD3DViewport.AdjustCameraByGamepad(X, Y: Single;
+  Pan, Zoom: Boolean);
+begin
+  if Zoom then
+    FCamera.Zoom := EnsureRange(FCamera.Zoom * Power(1.075, Y), 0.2, 5.0)
+  else if Pan then
+  begin
+    FCamera.PanX := FCamera.PanX + X * 18;
+    FCamera.PanY := FCamera.PanY - Y * 18;
+  end
+  else
+  begin
+    FCamera.Yaw := FCamera.Yaw + X * 0.05;
+    FCamera.Pitch := EnsureRange(FCamera.Pitch - Y * 0.05,
+      -Pi * 0.47, Pi * 0.47);
+  end;
+  UpdateCamera;
+end;
 
 constructor TMmdD3DViewport.Create(AOwner: TComponent);
 begin

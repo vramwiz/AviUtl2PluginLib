@@ -24,13 +24,14 @@ type
       const Segments: TMmdPreviewBoneSegments; const Joints: TMmdPreviewJoints);
     // 三角形形状を先に、骨格線を後に描き、形状内部の線は深度で隠す。
     procedure Render(const Context: ID3D11DeviceContext;
-      Stride, Offset: Cardinal);
+      Stride, Offset: Cardinal; IncludeLines: Boolean = True);
     // 現在の骨格位置とカメラからボーンのヒット対象を返す。
     function HitTest(const Projection: TMmdPreviewProjection;
       const Camera: TMmdPreviewCamera; ViewWidth, ViewHeight,
       X, Y: Integer): TMmdPreviewTarget;
     // 描画可能な骨格線または選択形状を保持しているか返す。
     function HasVertices: Boolean;
+    function HasShapes: Boolean;
   end;
 
 implementation
@@ -56,7 +57,7 @@ begin
 end;
 
 procedure TMmdD3DOverlay.Render(const Context: ID3D11DeviceContext;
-  Stride, Offset: Cardinal);
+  Stride, Offset: Cardinal; IncludeLines: Boolean);
 begin
   if (FShapeBuffer <> nil) and (FShapeCount > 0) then
   begin
@@ -64,7 +65,7 @@ begin
     Context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     Context.Draw(FShapeCount, 0);
   end;
-  if (FLineBuffer <> nil) and (FLineCount > 0) then
+  if IncludeLines and (FLineBuffer <> nil) and (FLineCount > 0) then
   begin
     Context.IASetVertexBuffers(0, 1, FLineBuffer, @Stride, @Offset);
     Context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
@@ -83,6 +84,11 @@ end;
 function TMmdD3DOverlay.HasVertices: Boolean;
 begin
   Result := (FShapeCount > 0) or (FLineCount > 0);
+end;
+
+function TMmdD3DOverlay.HasShapes: Boolean;
+begin
+  Result := FShapeCount > 0;
 end;
 
 end.
