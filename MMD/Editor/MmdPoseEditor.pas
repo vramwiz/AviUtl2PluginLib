@@ -8,6 +8,7 @@ uses
   System.Classes,
   System.UITypes,
   MmdPoseEditorLayout,
+  MmdPoseEditSession,
   MmdPoseHistory,
   PmxModel,
   PmxPose;
@@ -34,6 +35,7 @@ type
     procedure MorphWeightsChanged(Sender: TObject);
     procedure UpdateHistoryButtons;
   protected
+    FEditSession: TMmdPoseEditSession;
     FHistory: TMmdPoseHistory;
     FModel: TPmxModel;
     FPoses: TPmxBonePoses;
@@ -64,24 +66,10 @@ uses
   Vcl.Forms,
   Vcl.Graphics,
   Vcl.StdCtrls,
-  MmdPoseEditOperations,
   MmdPoseImageAutoFit,
   MmdPoseImageClipboard,
-  MmdPoseSymmetry,
   PmxMorph,
-  PmxPoseCodec,
   PmxReader;
-
-function IsIdentity(const Pose: TPmxBonePose): Boolean;
-begin
-  Result := (Abs(Pose.Translation.X) < 0.000001) and
-    (Abs(Pose.Translation.Y) < 0.000001) and
-    (Abs(Pose.Translation.Z) < 0.000001) and
-    (Abs(Pose.Rotation.X) < 0.000001) and
-    (Abs(Pose.Rotation.Y) < 0.000001) and
-    (Abs(Pose.Rotation.Z) < 0.000001) and
-    (Abs(Abs(Pose.Rotation.W) - 1.0) < 0.000001);
-end;
 
 constructor TStandardPoseEditorForm.Create(AOwner: TComponent);
 begin
@@ -91,7 +79,8 @@ end;
 
 procedure TStandardPoseEditorForm.InitializeEditor;
 begin
-  FHistory := TMmdPoseHistory.Create;
+  FEditSession := TMmdPoseEditSession.Create;
+  FHistory := FEditSession.History;
   FBoneList.OnClick := BoneChanged;
   FMorphPreview.OnWeightsChanged := MorphWeightsChanged;
   FAutoFitButton.OnClick := AutoFitClick;
@@ -121,13 +110,11 @@ procedure TStandardPoseEditorForm.LoadEditorModel(AModel: TPmxModel;
   const PoseData: string);
 var
   BoneIndex: Integer;
-  NamedPoses: TPmxNamedBonePoses;
 begin
   FModel := AModel;
-  FHistory.Free;
-  FHistory := TMmdPoseHistory.Create;
+  FEditSession.Load(FModel, PoseData, FPoses);
+  FHistory := FEditSession.History;
   FBoneList.Clear;
-  SetLength(FPoses, 0);
   FMorphPreview.SetModel(FModel);
   if FModel = nil then
   begin
@@ -136,9 +123,6 @@ begin
     Exit;
   end;
 
-  InitializeBonePoses(FModel, FPoses);
-  if TryDecodePoseData(PoseData, NamedPoses) then
-    ApplyNamedBonePoses(FModel, NamedPoses, FPoses);
   for BoneIndex := 0 to High(FModel.Bones) do
     FBoneList.Items.Add(FModel.Bones[BoneIndex].Name);
 
@@ -191,28 +175,18 @@ end;
 
 destructor TStandardPoseEditorForm.Destroy;
 begin
-  FHistory.Free;
+  FEditSession.Free;
   inherited Destroy;
 end;
 
 function TStandardPoseEditorForm.ApplyExternalPose(
   const PoseData: string): Boolean;
-var
-  BeforePoses, NewPoses: TPmxBonePoses;
-  NamedPoses: TPmxNamedBonePoses;
 begin
-  Result := False;
-  if (FModel = nil) or not TryDecodePoseData(PoseData, NamedPoses) then
-    Exit;
-  BeforePoses := Copy(FPoses);
-  InitializeBonePoses(FModel, NewPoses);
-  ApplyNamedBonePoses(FModel, NamedPoses, NewPoses);
-  FHistory.RecordBeforeEdit(BeforePoses);
-  FPoses := NewPoses;
+  Result := FEditSession.ApplyExternal(FModel, PoseData, FPoses);
+  if not Result then Exit;
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
-  Result := True;
 end;
 
 procedure TStandardPoseEditorForm.SymmetryChanged(Sender: TObject);
@@ -239,24 +213,16 @@ begin
 end;
 
 procedure TStandardPoseEditorForm.UndoClick(Sender: TObject);
-var
-  Restored: TPmxBonePoses;
 begin
-  if not FHistory.Undo(FPoses, Restored) then
-    Exit;
-  FPoses := Restored;
+  if not FEditSession.Undo(FPoses) then Exit;
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
 end;
 
 procedure TStandardPoseEditorForm.RedoClick(Sender: TObject);
-var
-  Restored: TPmxBonePoses;
 begin
-  if not FHistory.Redo(FPoses, Restored) then
-    Exit;
-  FPoses := Restored;
+  if not FEditSession.Redo(FPoses) then Exit;
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
@@ -329,77 +295,36 @@ begin
 end;
 
 procedure TStandardPoseEditorForm.ResetBoneClick(Sender: TObject);
-var
-  BeforePoses: TPmxBonePoses;
-  MirrorIndex: Integer;
 begin
-  if FBoneList.ItemIndex < 0 then
-    Exit;
-  BeforePoses := Copy(FPoses);
-  FPoses[FBoneList.ItemIndex] := Default(TPmxBonePose);
-  FPoses[FBoneList.ItemIndex].Rotation := IdentityQuaternion;
-  if FSymmetryButton.Down then
-  begin
-    MirrorIndex := FindSymmetricBone(FModel, FBoneList.ItemIndex);
-    if MirrorIndex >= 0 then
-      FPoses[MirrorIndex] := MirrorBonePose(FPoses[FBoneList.ItemIndex]);
-  end;
-  FHistory.RecordBeforeEdit(BeforePoses);
+  if FBoneList.ItemIndex < 0 then Exit;
+  FEditSession.ResetBone(FModel, FBoneList.ItemIndex,
+    FSymmetryButton.Down, FPoses);
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
 end;
 
 procedure TStandardPoseEditorForm.ResetBranchClick(Sender: TObject);
-var
-  BeforePoses: TPmxBonePoses;
-  MirrorIndex: Integer;
 begin
-  if FBoneList.ItemIndex < 0 then
-    Exit;
-  BeforePoses := Copy(FPoses);
-  ResetBoneBranch(FModel, FBoneList.ItemIndex, FPoses);
-  if FSymmetryButton.Down then
-  begin
-    MirrorIndex := FindSymmetricBone(FModel, FBoneList.ItemIndex);
-    if MirrorIndex >= 0 then
-      ResetBoneBranch(FModel, MirrorIndex, FPoses);
-  end;
-  FHistory.RecordBeforeEdit(BeforePoses);
+  if FBoneList.ItemIndex < 0 then Exit;
+  FEditSession.ResetBranch(FModel, FBoneList.ItemIndex,
+    FSymmetryButton.Down, FPoses);
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
 end;
 
 procedure TStandardPoseEditorForm.ResetAllClick(Sender: TObject);
-var
-  BeforePoses: TPmxBonePoses;
 begin
-  BeforePoses := Copy(FPoses);
-  InitializeBonePoses(FModel, FPoses);
-  FHistory.RecordBeforeEdit(BeforePoses);
+  FEditSession.ResetAll(FModel, FPoses);
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
 end;
 
 function TStandardPoseEditorForm.EncodeCurrentPose: string;
-var
-  BoneIndex: Integer;
-  Count: Integer;
-  NamedPoses: TPmxNamedBonePoses;
 begin
-  Count := 0;
-  SetLength(NamedPoses, Length(FPoses));
-  for BoneIndex := 0 to High(FPoses) do
-    if not IsIdentity(FPoses[BoneIndex]) then
-    begin
-      NamedPoses[Count].BoneName := FModel.Bones[BoneIndex].Name;
-      NamedPoses[Count].Pose := FPoses[BoneIndex];
-      Inc(Count);
-    end;
-  SetLength(NamedPoses, Count);
-  Result := EncodePoseData(NamedPoses);
+  Result := FEditSession.Encode(FModel, FPoses);
 end;
 
 function EditPose(const ModelFileName, CurrentPoseData, EditorCaption: string;
