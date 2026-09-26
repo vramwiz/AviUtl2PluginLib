@@ -25,6 +25,7 @@ type
     FModel: TPmxModel;
     FMorphWeights: TPmxMorphWeights;
     FPoses: TPmxBonePoses;
+    FRootRotation: TPmxQuaternion;
     FRenderer: TMmdD3DRenderer;
     FSelectedTarget: TMmdPreviewTarget;
     // モデル本体を含む確定シーンを更新する。カメラ値と初回フレームはRendererが維持する。
@@ -44,6 +45,8 @@ type
     destructor Destroy; override;
     // 保存対象外の確認用モーフ係数を設定し、モデル本体を再構築する。
     procedure SetMorphWeights(const AWeights: TPmxMorphWeights);
+    // 保存済み全身回転をモデルと骨格の描画へ反映する。
+    procedure SetRootRotation(const Rotation: TPmxQuaternion);
     // 正面の既定表示へ戻す。
     procedure ResetPreviewCamera;
     // 指定ボーンを画面中央へ移し、指定倍率で表示する。
@@ -95,7 +98,15 @@ end;
 procedure TMmdD3DViewportSurface.ResetPreviewCamera;
 begin
   FCamera := DefaultPreviewCamera;
+  FRootRotation := IdentityQuaternion;
   UpdateCamera;
+end;
+
+procedure TMmdD3DViewportSurface.SetRootRotation(
+  const Rotation: TPmxQuaternion);
+begin
+  FRootRotation := Rotation;
+  RebuildScene;
 end;
 
 function TMmdD3DViewportSurface.FocusPreviewBone(const BoneName: string;
@@ -110,7 +121,7 @@ begin
   if (FModel = nil) or (ClientWidth <= 0) or (ClientHeight <= 0) then
     Exit;
   BuildPreviewScene(FModel, FPoses, FMorphWeights, EmptyPreviewTarget,
-    EmptyPreviewTarget, Scene);
+    EmptyPreviewTarget, FRootRotation, Scene);
   Camera := DefaultPreviewCamera;
   for Joint in Scene.Joints do
     if SameText(FModel.Bones[Joint.BoneIndex].Name, BoneName) then
@@ -155,7 +166,7 @@ begin
   Result := False;
   if (FModel = nil) or (ClientWidth <= 0) or (ClientHeight <= 0) then Exit;
   BuildPreviewScene(FModel, FPoses, FMorphWeights, EmptyPreviewTarget,
-    EmptyPreviewTarget, Scene);
+    EmptyPreviewTarget, FRootRotation, Scene);
   HasLeftEye := False;
   HasRightEye := False;
   for Joint in Scene.Joints do
@@ -251,6 +262,7 @@ procedure TMmdD3DViewportSurface.RebuildScene;
 begin
   if (FRenderer <> nil) and (FModel <> nil) then
   begin
+    FRenderer.SetRootRotation(FRootRotation);
     FRenderer.SetScene(FModel, FPoses, FMorphWeights, FSelectedTarget,
       FHoverTarget);
     FRenderer.SetCamera(FCamera);
@@ -262,6 +274,7 @@ procedure TMmdD3DViewportSurface.RebuildSkeleton;
 begin
   if (FRenderer <> nil) and (FModel <> nil) then
   begin
+    FRenderer.SetRootRotation(FRootRotation);
     FRenderer.SetSkeleton(FModel, FPoses, FMorphWeights, FSelectedTarget,
       FHoverTarget);
     FRenderer.SetCamera(FCamera);

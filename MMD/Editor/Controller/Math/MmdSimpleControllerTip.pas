@@ -13,13 +13,21 @@ function TwistHand(const Model: TPmxModel; var Poses: TPmxBonePoses;
   Left: Boolean; Twist: Single): Boolean;
 // 指定側の手首をカメラ上下方向に回し、Posesを直接更新する。
 function PitchHand(const Model: TPmxModel; var Poses: TPmxBonePoses;
-  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single): Boolean;
+  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single): Boolean; overload;
+// 全身回転後の視点方向で手首を回す。
+function PitchHand(const Model: TPmxModel; var Poses: TPmxBonePoses;
+  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Boolean; overload;
 // 指定側の足首を脚軸の周りに回し、Posesを直接更新する。
 function TwistFoot(const Model: TPmxModel; var Poses: TPmxBonePoses;
   Left: Boolean; Twist: Single): Boolean;
 // 指定側の足先をカメラ上下方向に回し、Posesを直接更新する。
 function PitchFoot(const Model: TPmxModel; var Poses: TPmxBonePoses;
-  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single): Boolean;
+  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single): Boolean; overload;
+// 全身回転後の視点方向で足首を回す。
+function PitchFoot(const Model: TPmxModel; var Poses: TPmxBonePoses;
+  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Boolean; overload;
 
 
 implementation
@@ -94,6 +102,14 @@ end;
 
 function PitchHand(const Model: TPmxModel; var Poses: TPmxBonePoses;
   Left: Boolean; Pitch, CameraYaw, CameraPitch: Single): Boolean;
+begin
+  Result := PitchHand(Model, Poses, Left, Pitch, CameraYaw,
+    CameraPitch, IdentityQuaternion);
+end;
+
+function PitchHand(const Model: TPmxModel; var Poses: TPmxBonePoses;
+  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Boolean;
 var
   Arm, Elbow, Wrist, Finger, Parent: Integer;
   HandForward, ViewUp, AxisWorld, AxisLocal: TPmxVector3;
@@ -119,10 +135,12 @@ begin
     HandForward := RotateVector(Transforms[Wrist].Rotation,
       HandForward);
   end;
-  ViewUp := ScreenOffset(0, 1, CameraYaw, CameraPitch, 1);
+  ViewUp := RotateVector(InverseQuaternion(RootRotation),
+    ScreenOffset(0, 1, CameraYaw, CameraPitch, 1));
   AxisWorld := CrossVector(HandForward, ViewUp);
   if VectorLength(AxisWorld) < 0.000001 then
-    AxisWorld := ScreenOffset(1, 0, CameraYaw, CameraPitch, 1);
+    AxisWorld := RotateVector(InverseQuaternion(RootRotation),
+      ScreenOffset(1, 0, CameraYaw, CameraPitch, 1));
   Parent := Model.Bones[Wrist].ParentIndex;
   if Parent >= 0 then
     ParentRotation := Transforms[Parent].Rotation
@@ -164,6 +182,14 @@ end;
 
 function PitchFoot(const Model: TPmxModel; var Poses: TPmxBonePoses;
   Left: Boolean; Pitch, CameraYaw, CameraPitch: Single): Boolean;
+begin
+  Result := PitchFoot(Model, Poses, Left, Pitch, CameraYaw,
+    CameraPitch, IdentityQuaternion);
+end;
+
+function PitchFoot(const Model: TPmxModel; var Poses: TPmxBonePoses;
+  Left: Boolean; Pitch, CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Boolean;
 var
   Leg, Knee, Ankle, Toe, Parent: Integer;
   FootForward, ViewUp, AxisWorld, AxisLocal: TPmxVector3;
@@ -190,10 +216,12 @@ begin
     FootForward.Z := -1;
     FootForward := RotateVector(Transforms[Ankle].Rotation, FootForward);
   end;
-  ViewUp := ScreenOffset(0, 1, CameraYaw, CameraPitch, 1);
+  ViewUp := RotateVector(InverseQuaternion(RootRotation),
+    ScreenOffset(0, 1, CameraYaw, CameraPitch, 1));
   AxisWorld := CrossVector(FootForward, ViewUp);
   if VectorLength(AxisWorld) < 0.000001 then
-    AxisWorld := ScreenOffset(1, 0, CameraYaw, CameraPitch, 1);
+    AxisWorld := RotateVector(InverseQuaternion(RootRotation),
+      ScreenOffset(1, 0, CameraYaw, CameraPitch, 1));
   Parent := Model.Bones[Ankle].ParentIndex;
   if Parent >= 0 then
     ParentRotation := Transforms[Parent].Rotation

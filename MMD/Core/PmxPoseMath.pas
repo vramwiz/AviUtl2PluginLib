@@ -23,6 +23,8 @@ function RotateVector(const Rotation: TPmxQuaternion;
 function QuaternionFromAxisAngle(const Axis: TPmxVector3;
   AngleRadians: Single): TPmxQuaternion;
 function QuaternionFromEulerXYZ(X, Y, Z: Single): TPmxQuaternion;
+// Yawを先、Pitchを後に作用させる度数指定の回転を返す。
+function QuaternionFromYawPitchDegrees(Yaw, Pitch: Single): TPmxQuaternion;
 function QuaternionToEulerXYZ(const Value: TPmxQuaternion): TPmxVector3;
 function ScaleQuaternionRotation(const Value: TPmxQuaternion;
   Scale: Single): TPmxQuaternion;
@@ -31,6 +33,19 @@ implementation
 
 uses
   System.Math;
+
+function QuaternionFromYawPitchDegrees(Yaw, Pitch: Single): TPmxQuaternion;
+var
+  AxisX, AxisY: TPmxVector3;
+begin
+  AxisX := Default(TPmxVector3);
+  AxisY := Default(TPmxVector3);
+  AxisX.X := 1;
+  AxisY.Y := 1;
+  Result := NormalizeQuaternion(MultiplyQuaternion(
+    QuaternionFromAxisAngle(AxisX, DegToRad(Pitch)),
+    QuaternionFromAxisAngle(AxisY, DegToRad(Yaw))));
+end;
 
 function AddVector(const A, B: TPmxVector3): TPmxVector3;
 begin

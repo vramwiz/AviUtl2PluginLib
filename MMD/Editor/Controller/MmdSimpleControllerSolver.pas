@@ -53,11 +53,23 @@ function ApplySimpleControllerWorldWithExtras(const Model: TPmxModel;
   const BasePoses: TPmxBonePoses; Controller: TMmdSimpleController;
   const WorldMove, WorldTurn: TPmxVector3;
   DragTwist, DragBend, DragTipPitch, CameraYaw, CameraPitch: Single;
-  out NewPoses: TPmxBonePoses): Boolean;
+  out NewPoses: TPmxBonePoses): Boolean; overload;
+// 全身回転後の表示方向を局所姿勢へ戻して手足先の向きを計算する。
+function ApplySimpleControllerWorldWithExtras(const Model: TPmxModel;
+  const BasePoses: TPmxBonePoses; Controller: TMmdSimpleController;
+  const WorldMove, WorldTurn: TPmxVector3;
+  DragTwist, DragBend, DragTipPitch, CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion;
+  out NewPoses: TPmxBonePoses): Boolean; overload;
 // 十字キー右で肘・膝が画面右へ動く符号を返す。姿勢は変更しない。
 function SimpleControllerBendViewSign(const Model: TPmxModel;
   const Poses: TPmxBonePoses; Controller: TMmdSimpleController;
-  CameraYaw, CameraPitch: Single): Single;
+  CameraYaw, CameraPitch: Single): Single; overload;
+// 全身回転後の画面右を基準に曲げ方向の符号を返す。
+function SimpleControllerBendViewSign(const Model: TPmxModel;
+  const Poses: TPmxBonePoses; Controller: TMmdSimpleController;
+  CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Single; overload;
 // 指定対象だけを初期姿勢へ戻した配列を返す。BasePosesは変更しない。
 function ResetSimpleController(const Model: TPmxModel;
   const BasePoses: TPmxBonePoses; Controller: TMmdSimpleController;
@@ -125,6 +137,15 @@ end;
 function SimpleControllerBendViewSign(const Model: TPmxModel;
   const Poses: TPmxBonePoses; Controller: TMmdSimpleController;
   CameraYaw, CameraPitch: Single): Single;
+begin
+  Result := SimpleControllerBendViewSign(Model, Poses, Controller,
+    CameraYaw, CameraPitch, IdentityQuaternion);
+end;
+
+function SimpleControllerBendViewSign(const Model: TPmxModel;
+  const Poses: TPmxBonePoses; Controller: TMmdSimpleController;
+  CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Single;
 var
   Root, Joint, Tip: Integer;
 begin
@@ -139,7 +160,7 @@ begin
     Exit;
   end;
   Result := BendViewSign(Model, Poses, Root, Joint, Tip,
-    CameraYaw, CameraPitch);
+    CameraYaw, CameraPitch, RootRotation);
 end;
 
 function ApplySimpleController(const Model: TPmxModel;
@@ -247,6 +268,18 @@ function ApplySimpleControllerWorldWithExtras(const Model: TPmxModel;
   const WorldMove, WorldTurn: TPmxVector3;
   DragTwist, DragBend, DragTipPitch, CameraYaw, CameraPitch: Single;
   out NewPoses: TPmxBonePoses): Boolean;
+begin
+  Result := ApplySimpleControllerWorldWithExtras(Model, BasePoses,
+    Controller, WorldMove, WorldTurn, DragTwist, DragBend, DragTipPitch,
+    CameraYaw, CameraPitch, IdentityQuaternion, NewPoses);
+end;
+
+function ApplySimpleControllerWorldWithExtras(const Model: TPmxModel;
+  const BasePoses: TPmxBonePoses; Controller: TMmdSimpleController;
+  const WorldMove, WorldTurn: TPmxVector3;
+  DragTwist, DragBend, DragTipPitch, CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion;
+  out NewPoses: TPmxBonePoses): Boolean;
 var
   Bone, Center, Head, Parent: Integer;
   Height: Single;
@@ -319,7 +352,7 @@ begin
             DragTwist);
         if Result then
           Result := PitchHand(Model, NewPoses, Controller = scLeftHand,
-            DragTipPitch, CameraYaw, CameraPitch);
+            DragTipPitch, CameraYaw, CameraPitch, RootRotation);
       end;
     scLeftFoot, scRightFoot:
       begin
@@ -332,7 +365,7 @@ begin
             DragTwist);
         if Result then
           Result := PitchFoot(Model, NewPoses, Controller = scLeftFoot,
-            DragTipPitch, CameraYaw, CameraPitch);
+            DragTipPitch, CameraYaw, CameraPitch, RootRotation);
       end;
     scCenter:
       begin

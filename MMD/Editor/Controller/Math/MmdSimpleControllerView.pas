@@ -16,7 +16,11 @@ function ScreenOffset(X, Y, Yaw, Pitch, Scale: Single): TPmxVector3;
 function DepthOffset(Depth, Yaw, Pitch, Scale: Single): TPmxVector3;
 // 二節関節の曲げが画面右へ進む符号を返す。姿勢は変更しない。
 function BendViewSign(const Model: TPmxModel; const Poses: TPmxBonePoses;
-  Root, Joint, Tip: Integer; CameraYaw, CameraPitch: Single): Single;
+  Root, Joint, Tip: Integer; CameraYaw, CameraPitch: Single): Single; overload;
+// 全身ポーズ回転を打ち消した視点方向で曲げ方向を返す。
+function BendViewSign(const Model: TPmxModel; const Poses: TPmxBonePoses;
+  Root, Joint, Tip: Integer; CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Single; overload;
 // 開始姿勢を基準にワールド移動・回転を局所姿勢へ合成し、NewPosesだけを変更する。
 procedure ApplyWorldBoneTransform(const Model: TPmxModel;
   const BasePoses: TPmxBonePoses; var NewPoses: TPmxBonePoses;
@@ -61,6 +65,15 @@ end;
 function BendViewSign(const Model: TPmxModel;
   const Poses: TPmxBonePoses; Root, Joint, Tip: Integer;
   CameraYaw, CameraPitch: Single): Single;
+begin
+  Result := BendViewSign(Model, Poses, Root, Joint, Tip,
+    CameraYaw, CameraPitch, IdentityQuaternion);
+end;
+
+function BendViewSign(const Model: TPmxModel;
+  const Poses: TPmxBonePoses; Root, Joint, Tip: Integer;
+  CameraYaw, CameraPitch: Single;
+  const RootRotation: TPmxQuaternion): Single;
 var
   Parent: Integer;
   Direction, Pole, Tangent, ViewUp, ViewRight,
@@ -92,12 +105,14 @@ begin
   end;
   if VectorLength(Pole) < 0.000001 then Exit;
   Tangent := CrossVector(Direction, NormalizeVector(Pole));
-  ViewRight := ScreenOffset(1, 0, CameraYaw, CameraPitch, 1);
+  ViewRight := RotateVector(InverseQuaternion(RootRotation),
+    ScreenOffset(1, 0, CameraYaw, CameraPitch, 1));
   Alignment := DotVector(Tangent, ViewRight);
   if Abs(Alignment) < 0.1 then
   begin
     // 横から見て関節が画面右へ動けない角度では上方向を使う。
-    ViewUp := ScreenOffset(0, 1, CameraYaw, CameraPitch, 1);
+    ViewUp := RotateVector(InverseQuaternion(RootRotation),
+      ScreenOffset(0, 1, CameraYaw, CameraPitch, 1));
     Alignment := DotVector(Tangent, ViewUp);
   end;
   if Alignment < 0 then Result := -1;

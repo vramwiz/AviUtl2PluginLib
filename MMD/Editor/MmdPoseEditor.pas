@@ -113,6 +113,7 @@ var
 begin
   FModel := AModel;
   FEditSession.Load(FModel, PoseData, FPoses);
+  FViewport.SetRootRotation(FEditSession.PreviewRotation);
   FHistory := FEditSession.History;
   FBoneList.Clear;
   FMorphPreview.SetModel(FModel);
@@ -151,7 +152,8 @@ begin
     if AutoFitPoseToReference(FModel, FViewport, FBoneList.ItemIndex,
       FPoses) then
     begin
-      FHistory.RecordBeforeEdit(BeforePoses);
+      FHistory.RecordBeforeEdit(BeforePoses, FEditSession.RootRotation,
+        FEditSession.RelativeYaw, FEditSession.RelativePitch);
       UpdateHistoryButtons;
       PoseStateChanged;
     end
@@ -184,6 +186,7 @@ function TStandardPoseEditorForm.ApplyExternalPose(
 begin
   Result := FEditSession.ApplyExternal(FModel, PoseData, FPoses);
   if not Result then Exit;
+  FViewport.SetRootRotation(FEditSession.PreviewRotation);
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
@@ -202,7 +205,8 @@ end;
 
 procedure TStandardPoseEditorForm.ViewportPoseEditStarted(Sender: TObject);
 begin
-  FHistory.RecordBeforeEdit(FPoses);
+  FHistory.RecordBeforeEdit(FPoses, FEditSession.RootRotation,
+    FEditSession.RelativeYaw, FEditSession.RelativePitch);
   UpdateHistoryButtons;
 end;
 
@@ -215,6 +219,7 @@ end;
 procedure TStandardPoseEditorForm.UndoClick(Sender: TObject);
 begin
   if not FEditSession.Undo(FPoses) then Exit;
+  FViewport.SetRootRotation(FEditSession.PreviewRotation);
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
@@ -223,6 +228,7 @@ end;
 procedure TStandardPoseEditorForm.RedoClick(Sender: TObject);
 begin
   if not FEditSession.Redo(FPoses) then Exit;
+  FViewport.SetRootRotation(FEditSession.PreviewRotation);
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;
@@ -317,6 +323,7 @@ end;
 procedure TStandardPoseEditorForm.ResetAllClick(Sender: TObject);
 begin
   FEditSession.ResetAll(FModel, FPoses);
+  FViewport.SetRootRotation(FEditSession.PreviewRotation);
   FViewport.SetScene(FModel, FPoses, FBoneList.ItemIndex);
   UpdateHistoryButtons;
   PoseStateChanged;

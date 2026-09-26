@@ -70,19 +70,38 @@ type
 procedure BuildPreviewScene(Model: TPmxModel; const Poses: TPmxBonePoses;
   const MorphWeights: TPmxMorphWeights; const SelectedTarget,
   HoverTarget: TMmdPreviewTarget;
-  out Scene: TMmdPreviewScene);
+  out Scene: TMmdPreviewScene); overload;
+// 保存済み全身回転を足元原点まわりに加えてシーンを構築する。
+procedure BuildPreviewScene(Model: TPmxModel; const Poses: TPmxBonePoses;
+  const MorphWeights: TPmxMorphWeights; const SelectedTarget,
+  HoverTarget: TMmdPreviewTarget; const RootRotation: TPmxQuaternion;
+  out Scene: TMmdPreviewScene); overload;
 // 初回に決めた中心と投影範囲を維持し、姿勢頂点と骨格だけを再構築する。
 procedure BuildPreviewSceneWithFrame(Model: TPmxModel;
   const Poses: TPmxBonePoses; const MorphWeights: TPmxMorphWeights;
   const SelectedTarget,
   HoverTarget: TMmdPreviewTarget; const Center: TPmxVector3;
-  const Projection: TMmdPreviewProjection; out Scene: TMmdPreviewScene);
+  const Projection: TMmdPreviewProjection; out Scene: TMmdPreviewScene); overload;
+// 投影範囲を維持して全身回転付きの頂点と骨格を更新する。
+procedure BuildPreviewSceneWithFrame(Model: TPmxModel;
+  const Poses: TPmxBonePoses; const MorphWeights: TPmxMorphWeights;
+  const SelectedTarget,
+  HoverTarget: TMmdPreviewTarget; const Center: TPmxVector3;
+  const Projection: TMmdPreviewProjection;
+  const RootRotation: TPmxQuaternion; out Scene: TMmdPreviewScene); overload;
 // モデル頂点を再生成せず、姿勢に追従する骨格線と関節位置だけを構築する。
 procedure BuildPreviewSkeleton(Model: TPmxModel; const Poses: TPmxBonePoses;
   const MorphWeights: TPmxMorphWeights; const SelectedTarget,
   HoverTarget: TMmdPreviewTarget;
   const Center: TPmxVector3; out BoneLines: TMmdPreviewVertices;
-  out BoneSegments: TMmdPreviewBoneSegments; out Joints: TMmdPreviewJoints);
+  out BoneSegments: TMmdPreviewBoneSegments; out Joints: TMmdPreviewJoints); overload;
+// 全身回転後の骨格を、既存シーンの投影基準で返す。
+procedure BuildPreviewSkeleton(Model: TPmxModel; const Poses: TPmxBonePoses;
+  const MorphWeights: TPmxMorphWeights; const SelectedTarget,
+  HoverTarget: TMmdPreviewTarget;
+  const Center: TPmxVector3; const RootRotation: TPmxQuaternion;
+  out BoneLines: TMmdPreviewVertices;
+  out BoneSegments: TMmdPreviewBoneSegments; out Joints: TMmdPreviewJoints); overload;
 // 対象なしを表す、各番号が-1の選択値を返す。
 function EmptyPreviewTarget: TMmdPreviewTarget;
 // 正面表示、等倍の初期カメラ値を返す。
@@ -96,7 +115,8 @@ implementation
 
 uses
   System.Math,
-  MmdD3DDeform;
+  MmdD3DDeform,
+  PmxPoseMath;
 
 function DefaultPreviewCamera: TMmdPreviewCamera;
 begin
@@ -324,6 +344,35 @@ procedure BuildPreviewScene(Model: TPmxModel; const Poses: TPmxBonePoses;
   const MorphWeights: TPmxMorphWeights; const SelectedTarget,
   HoverTarget: TMmdPreviewTarget;
   out Scene: TMmdPreviewScene);
+begin
+  BuildPreviewScene(Model, Poses, MorphWeights, SelectedTarget,
+    HoverTarget, IdentityQuaternion, Scene);
+end;
+
+procedure RotatePreviewGeometry(const RootRotation: TPmxQuaternion;
+  var Transforms: TPmxBoneTransforms; var Skinned: TPmxSkinnedVertices);
+var
+  Index: Integer;
+begin
+  if (Abs(RootRotation.X) + Abs(RootRotation.Y) +
+      Abs(RootRotation.Z) < 0.000001) and
+    (Abs(Abs(RootRotation.W) - 1) < 0.000001) then Exit;
+  for Index := 0 to High(Transforms) do
+    Transforms[Index].Position := RotateVector(RootRotation,
+      Transforms[Index].Position);
+  for Index := 0 to High(Skinned) do
+  begin
+    Skinned[Index].Position := RotateVector(RootRotation,
+      Skinned[Index].Position);
+    Skinned[Index].Normal := RotateVector(RootRotation,
+      Skinned[Index].Normal);
+  end;
+end;
+
+procedure BuildPreviewScene(Model: TPmxModel; const Poses: TPmxBonePoses;
+  const MorphWeights: TPmxMorphWeights; const SelectedTarget,
+  HoverTarget: TMmdPreviewTarget; const RootRotation: TPmxQuaternion;
+  out Scene: TMmdPreviewScene);
 var
   BoundsMax, BoundsMin: TPmxVector3;
   Center: TPmxVector3;
@@ -335,6 +384,7 @@ begin
   if (Model = nil) or (Length(Model.Vertices) = 0) then
     Exit;
   DeformPreviewModel(Model, Poses, MorphWeights, Transforms, Skinned);
+  RotatePreviewGeometry(RootRotation, Transforms, Skinned);
   CalculateBounds(Skinned, BoundsMin, BoundsMax);
   Center.X := (BoundsMin.X + BoundsMax.X) * 0.5;
   Center.Y := (BoundsMin.Y + BoundsMax.Y) * 0.5;
@@ -357,6 +407,17 @@ procedure BuildPreviewSceneWithFrame(Model: TPmxModel;
   const SelectedTarget,
   HoverTarget: TMmdPreviewTarget; const Center: TPmxVector3;
   const Projection: TMmdPreviewProjection; out Scene: TMmdPreviewScene);
+begin
+  BuildPreviewSceneWithFrame(Model, Poses, MorphWeights, SelectedTarget,
+    HoverTarget, Center, Projection, IdentityQuaternion, Scene);
+end;
+
+procedure BuildPreviewSceneWithFrame(Model: TPmxModel;
+  const Poses: TPmxBonePoses; const MorphWeights: TPmxMorphWeights;
+  const SelectedTarget,
+  HoverTarget: TMmdPreviewTarget; const Center: TPmxVector3;
+  const Projection: TMmdPreviewProjection;
+  const RootRotation: TPmxQuaternion; out Scene: TMmdPreviewScene);
 var
   Skinned: TPmxSkinnedVertices;
   Transforms: TPmxBoneTransforms;
@@ -365,6 +426,7 @@ begin
   if (Model = nil) or (Length(Model.Vertices) = 0) then
     Exit;
   DeformPreviewModel(Model, Poses, MorphWeights, Transforms, Skinned);
+  RotatePreviewGeometry(RootRotation, Transforms, Skinned);
   Scene.Center := Center;
   Scene.Projection := Projection;
   BuildTriangles(Model, Skinned, MorphWeights, Center, Scene.Triangles,
@@ -378,7 +440,19 @@ procedure BuildPreviewSkeleton(Model: TPmxModel; const Poses: TPmxBonePoses;
   HoverTarget: TMmdPreviewTarget;
   const Center: TPmxVector3; out BoneLines: TMmdPreviewVertices;
   out BoneSegments: TMmdPreviewBoneSegments; out Joints: TMmdPreviewJoints);
+begin
+  BuildPreviewSkeleton(Model, Poses, MorphWeights, SelectedTarget,
+    HoverTarget, Center, IdentityQuaternion, BoneLines, BoneSegments, Joints);
+end;
+
+procedure BuildPreviewSkeleton(Model: TPmxModel; const Poses: TPmxBonePoses;
+  const MorphWeights: TPmxMorphWeights; const SelectedTarget,
+  HoverTarget: TMmdPreviewTarget;
+  const Center: TPmxVector3; const RootRotation: TPmxQuaternion;
+  out BoneLines: TMmdPreviewVertices;
+  out BoneSegments: TMmdPreviewBoneSegments; out Joints: TMmdPreviewJoints);
 var
+  Index: Integer;
   Transforms: TPmxBoneTransforms;
 begin
   BoneLines := nil;
@@ -387,6 +461,12 @@ begin
   if Model = nil then
     Exit;
   CalculatePreviewSkeleton(Model, Poses, MorphWeights, Transforms);
+  if (Abs(RootRotation.X) + Abs(RootRotation.Y) +
+      Abs(RootRotation.Z) > 0.000001) or
+    (Abs(Abs(RootRotation.W) - 1) > 0.000001) then
+    for Index := 0 to High(Transforms) do
+      Transforms[Index].Position := RotateVector(RootRotation,
+        Transforms[Index].Position);
   BuildBoneLines(Model, Transforms, Center, SelectedTarget, HoverTarget,
     BoneLines, BoneSegments, Joints);
 end;

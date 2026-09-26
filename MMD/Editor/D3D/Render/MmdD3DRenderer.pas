@@ -43,6 +43,8 @@ type
       HoverTarget: TMmdPreviewTarget);
     // 頂点バッファを変更せず、シェーダーへ渡すカメラ定数だけを更新する。
     procedure SetCamera(const Camera: TMmdPreviewCamera);
+    // 全身ポーズ回転を、以後のシーン再構築に適用する。
+    procedure SetRootRotation(const Rotation: TPmxQuaternion);
     // 現在のカメラ投影で指定画面座標にある関節またはボーン区間を返す。
     function HitTestTarget(X, Y: Integer): TMmdPreviewTarget;
     property ErrorText: string read GetErrorText;
@@ -73,6 +75,7 @@ type
     FContext: ID3D11DeviceContext;
     FBlendState: ID3D11BlendState;
     FCamera: TMmdPreviewCamera;
+    FRootRotation: TPmxQuaternion;
     FDepthTexture: ID3D11Texture2D;
     FDepthView: ID3D11DepthStencilView;
     FDevice: ID3D11Device;
@@ -113,6 +116,7 @@ type
       const MorphWeights: TPmxMorphWeights; const SelectedTarget,
       HoverTarget: TMmdPreviewTarget);
     procedure SetCamera(const Camera: TMmdPreviewCamera);
+    procedure SetRootRotation(const Rotation: TPmxQuaternion);
     function GetLoadedTextureCount: Integer;
     function GetProjection: TMmdPreviewProjection;
     function HitTestTarget(X, Y: Integer): TMmdPreviewTarget;
@@ -124,6 +128,7 @@ begin
   inherited Create;
   FOverlay := TMmdD3DOverlay.Create;
   FCamera := DefaultPreviewCamera;
+  FRootRotation := IdentityQuaternion;
   FModelVisible := True;
   FOverlayVisible := True;
   FViewWidth := Max(Width, 1);
@@ -195,10 +200,10 @@ begin
     InitialFrame := (not FHasFrame) or (FFrameModel <> Model);
     if InitialFrame then
       BuildPreviewScene(Model, Poses, MorphWeights, SelectedTarget,
-        HoverTarget, Scene)
+        HoverTarget, FRootRotation, Scene)
     else
       BuildPreviewSceneWithFrame(Model, Poses, MorphWeights, SelectedTarget,
-        HoverTarget, FCenter, FProjection, Scene);
+        HoverTarget, FCenter, FProjection, FRootRotation, Scene);
     BuildPreviewBoneShapes(Scene.Joints, Scene.BoneSegments, SelectedTarget,
       HoverTarget, Scene.Projection.ModelHeight, Scene.BoneShapes,
       FMarkerOnlyVisible);
@@ -243,7 +248,7 @@ begin
     Exit;
   try
     BuildPreviewSkeleton(Model, Poses, MorphWeights, SelectedTarget,
-      HoverTarget, FCenter, BoneLines, Segments, Joints);
+      HoverTarget, FCenter, FRootRotation, BoneLines, Segments, Joints);
     BuildPreviewBoneShapes(Joints, Segments, SelectedTarget, HoverTarget,
       FProjection.ModelHeight, BoneShapes, FMarkerOnlyVisible);
     FOverlay.Update(FDevice, FContext, BoneLines, BoneShapes, Segments, Joints);
@@ -260,6 +265,17 @@ begin
   if FShaders <> nil then
     FShaders.UpdateCamera(FContext, FCamera, FProjection, FViewWidth,
       FViewHeight);
+end;
+
+procedure TMmdD3DRendererImpl.SetRootRotation(
+  const Rotation: TPmxQuaternion);
+begin
+  if (Abs(FRootRotation.X - Rotation.X) +
+      Abs(FRootRotation.Y - Rotation.Y) +
+      Abs(FRootRotation.Z - Rotation.Z) +
+      Abs(FRootRotation.W - Rotation.W) > 0.00001) then
+    FHasFrame := False;
+  FRootRotation := Rotation;
 end;
 
 function TMmdD3DRendererImpl.GetLoadedTextureCount: Integer;
@@ -430,6 +446,12 @@ end;
 procedure TMmdD3DRenderer.SetCamera(const Camera: TMmdPreviewCamera);
 begin
   TMmdD3DRendererImpl(FImpl).SetCamera(Camera);
+end;
+
+procedure TMmdD3DRenderer.SetRootRotation(
+  const Rotation: TPmxQuaternion);
+begin
+  TMmdD3DRendererImpl(FImpl).SetRootRotation(Rotation);
 end;
 
 procedure TMmdD3DRenderer.SetSkeleton(Model: TPmxModel;
