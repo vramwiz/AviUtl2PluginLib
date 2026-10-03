@@ -30,7 +30,7 @@ type
     function FindJob(const Id: string): TArtExchangeJob;
     procedure NotifyJob(Document: TArtDocument; const Id,State,MessageText: string; Progress: Integer);
     function ExportJob(Document: TArtDocument; const Prompt,Root: string; Workspace: TJSONObject = nil;
-      const SourceFileName: string = ''): string;
+      const SourceFileName: string = ''; const OriginId: string = ''): string;
     function PrepareResult(Document: TArtDocument; const FileName: string;
       out Job: TArtExchangeJob; out Digest: string): TArtDocument;
     procedure CommitResult(Job: TArtExchangeJob; const Digest: string);
@@ -288,7 +288,7 @@ begin
   Job.State := State; Job.Progress := Progress; Job.MessageText := MessageText;
 end;
 function TArtExchange.ExportJob(Document: TArtDocument; const Prompt,Root: string; Workspace: TJSONObject;
-  const SourceFileName: string): string;
+  const SourceFileName,OriginId: string): string;
 var Job: TArtExchangeJob; Request,Canvas,LayerJson,Asset,Recovery: TJSONObject;
     Layers,Assets,Supported: TJSONArray; ImageDirectory,ImagePath,SelectedId: string;
     Pixels: TBytes; Counter: Integer; Ready: Boolean;
@@ -389,7 +389,8 @@ begin
       'This is file exchange; no cloud API is invoked by the application.',TEncoding.UTF8);
     // Save the complete pre-AI document for explicit restart recovery.
     ImagePath := TPath.Combine(Job.Directory,'snapshot.psd');
-    if Length(Document.SourceBytes)=0 then WriteNewPsd(Document,ImagePath,pcRle)
+    if OriginId<>'' then SaveCreatedPsd(Document,ImagePath,OriginId)
+    else if Length(Document.SourceBytes)=0 then WriteNewPsd(Document,ImagePath,pcRle)
     else begin
       try SaveLayerPropertiesPsd(Document,ImagePath);
       except on E: EArtFormat do SaveImageCompositionPsd(Document,ImagePath); end;

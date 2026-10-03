@@ -1,4 +1,4 @@
-unit ConfirmDialogForm;
+﻿unit ConfirmDialogForm;
 
 interface
 
@@ -24,11 +24,16 @@ type
     FDpiContext: TDarkThemeDpiContext;
     FOkButton: TDarkButton;
     procedure ApplyDarkTitleBar;
+    procedure ApplyMetrics(TargetPPI: Integer);
     function DpiAtPoint(const P: TPoint): Integer;
     procedure LayoutButtons;
     procedure CMDialogKey(var Message: TCMDialogKey); message CM_DIALOGKEY;
+  protected
+    procedure DoAfterMonitorDpiChanged(OldDPI, NewDPI: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
+    // VCLの倍率変更後に文字と固定レイアウトを基準寸法へ揃える。
+    procedure ScaleForPPI(NewPPI: Integer); override;
     procedure ApplyDpi(TargetPPI: Integer);
     function Execute(const ACaption: string): TModalResult;
   end;
@@ -46,8 +51,8 @@ uses
 
 const
   DesignClientWidth = 199;
-  DesignClientHeight = 56;
   DesignCaptionHeight = 35;
+  DesignClientHeight = DesignCaptionHeight + DarkThemeButtonHeight;
   DesignCaptionFontHeight = 14;
   DesignCursorOffset = 8;
 
@@ -81,7 +86,7 @@ begin
   FCancelButton.Cancel := True;
   FCancelButton.ModalResult := mrCancel;
   FCancelButton.TabOrder := 1;
-  LayoutButtons;
+  ApplyDpi(CurrentPPI);
 end;
 
 procedure TFormConfirmDialog.ApplyDarkTitleBar;
@@ -113,13 +118,53 @@ begin
     SizeOf(BorderColor));
 end;
 
+procedure TFormConfirmDialog.ApplyMetrics(TargetPPI: Integer);
+  procedure SetFont(ControlFont: TFont; DesignHeight: Integer);
+  begin
+    ControlFont.Name := 'Yu Gothic UI';
+    ControlFont.PixelsPerInch := FDpiContext.Dpi;
+    ControlFont.Height := FDpiContext.Metrics.FontHeight(DesignHeight);
+  end;
+begin
+  // VCL can call ScaleForPPI while the inherited constructor is still loading.
+  if FDpiContext = nil then
+    Exit;
+  DisableAlign;
+  try
+    FDpiContext.Dpi := TargetPPI;
+    SetFont(Font, DarkThemeDefaultFontHeight);
+    PanelCaption.ParentFont := False;
+    SetFont(PanelCaption.Font, DesignCaptionFontHeight);
+    Panel1.ParentFont := False;
+    SetFont(Panel1.Font, DarkThemeDefaultFontHeight);
+    if Assigned(FOkButton) then
+      SetFont(FOkButton.Font, DarkThemeDefaultFontHeight);
+    if Assigned(FCancelButton) then
+      SetFont(FCancelButton.Font, DarkThemeDefaultFontHeight);
+    ClientWidth := FDpiContext.Scale(DesignClientWidth);
+    ClientHeight := FDpiContext.Scale(DesignClientHeight);
+  finally
+    EnableAlign;
+  end;
+  LayoutButtons;
+end;
+
+procedure TFormConfirmDialog.ScaleForPPI(NewPPI: Integer);
+begin
+  inherited;
+  ApplyMetrics(NewPPI);
+end;
+
+procedure TFormConfirmDialog.DoAfterMonitorDpiChanged(OldDPI, NewDPI: Integer);
+begin
+  inherited;
+  ApplyMetrics(NewDPI);
+end;
+
 procedure TFormConfirmDialog.ApplyDpi(TargetPPI: Integer);
 begin
-  FDpiContext.Dpi := TargetPPI;
-  ClientWidth := FDpiContext.Scale(DesignClientWidth);
-  ClientHeight := FDpiContext.Scale(DesignClientHeight);
-  Font.Height := FDpiContext.Metrics.FontHeight(DesignCaptionFontHeight);
-  LayoutButtons;
+  // Keep VCL's DPI state and our shared control metrics at the same scale.
+  ScaleForPPI(NormalizeDarkThemeDpi(TargetPPI));
 end;
 
 procedure TFormConfirmDialog.CMDialogKey(var Message: TCMDialogKey);
@@ -139,18 +184,11 @@ begin
 end;
 
 function TFormConfirmDialog.DpiAtPoint(const P: TPoint): Integer;
-var
-  Wnd: HWND;
 begin
-  Wnd := WindowFromPoint(P);
-  if Wnd <> 0 then
-    Result := GetDpiForWindow(Wnd)
-  else
-    Result := 0;
+  Result := Screen.MonitorFromPoint(P).PixelsPerInch;
   if Result <= 0 then
     Result := Screen.PixelsPerInch;
-  if Result <= 0 then
-    Result := DarkThemeDesignDpi;
+  Result := NormalizeDarkThemeDpi(Result);
 end;
 
 function TFormConfirmDialog.Execute(const ACaption: string): TModalResult;
@@ -172,6 +210,8 @@ begin
 
   Left := P.X + CursorOffset;
   Top := P.Y + CursorOffset;
+  HandleNeeded;
+  ApplyDpi(CurrentPPI);
   if Left + Width > R.Right then
     Left := R.Right - Width;
   if Top + Height > R.Bottom then
@@ -181,7 +221,6 @@ begin
   if Top < R.Top then
     Top := R.Top;
 
-  HandleNeeded;
   ApplyDarkTitleBar;
   Result := ShowModal;
 end;
@@ -193,6 +232,7 @@ end;
 
 procedure TFormConfirmDialog.FormShow(Sender: TObject);
 begin
+  ApplyDpi(CurrentPPI);
   ApplyDarkTitleBar;
   LayoutButtons;
   if FOkButton.CanFocus then

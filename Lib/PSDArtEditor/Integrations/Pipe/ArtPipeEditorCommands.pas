@@ -93,7 +93,7 @@ var Layer, Previous: TArtLayer; Version: UInt64; Name, Path: string;
   procedure RequireManaged;
   begin
     if not Editor.ManagedDocument then
-      raise EArtFormat.Create('外部PSDでは名前・補助記号・表示状態だけを変更できます。');
+      raise EArtFormat.Create('外部PSDでは補助記号・表示状態・切替だけを変更できます。');
   end;
 begin
   Data := nil;

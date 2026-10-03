@@ -38,13 +38,11 @@ type
     FBitmap: Vcl.Graphics.TBitmap;
     FStatus: TLabel;
     FHistory: TArtFileHistory;
-    FHistoryMenu: TMenuItem;
     FLoadingSaved: Boolean;
-    FSave, FSaveAs, FClose: TMenuItem;
     FOpenDialog: TOpenDialog;
     FSaveDialog: TSaveDialog;
     FCanEdit, FCanRender, FManaged: Boolean;
-    FManagedRoot, FExchangeRoot: string;
+    FManagedRoot, FExchangeRoot, FOriginId: string;
     FInitialDocument: TArtDocument;
     FLastWrittenPath: string;
     FLastWrittenBytes: TBytes;
@@ -61,10 +59,9 @@ type
     FDragging: Boolean;
     FDragStart: TPoint;
     function GetModified: Boolean;
-    function IsManagedPath(const FileName: string): Boolean;
+    function IsNewPsdPath(const FileName: string): Boolean;
     procedure RequireManagedEdit;
     procedure CaptureInitialDocument;
-    procedure RenameFileClick(Sender: TObject);
     procedure PreviewWheel(Sender: TObject; Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     function DispatchCommand(const Command: string; Args: TJSONObject): TJSONObject;
     function JobJson(Job: TArtExchangeJob): TJSONObject;
@@ -93,14 +90,7 @@ type
     procedure PreviewMouseMove(Sender: TObject; Shift: TShiftState; X,Y: Integer);
     procedure PreviewMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
     function PreviewRect: TRect;
-    procedure HistoryClick(Sender: TObject);
-    procedure RebuildHistory;
     procedure LayerAttributes(Sender: TObject; Layer: TArtLayer; Visible: Boolean; Opacity: Byte);
-    procedure OpenClick(Sender: TObject);
-    procedure SaveClick(Sender: TObject);
-    procedure SaveAsClick(Sender: TObject);
-    procedure CloseClick(Sender: TObject);
-    procedure ExitClick(Sender: TObject);
     procedure TreeChange(Sender: TObject);
     procedure LayerRename(Sender: TObject; Layer: TArtLayer; const Name: string);
     procedure PaintPreview(Sender: TObject);
@@ -110,6 +100,9 @@ type
     procedure SetPreview(const RGBA: TBytes);
     procedure UpdateStatus;
     procedure RebuildTree;
+    function Pixel(Value: Integer): Integer;
+  protected
+    procedure CreateWnd; override;
   public
     constructor Create(AOwner: TComponent); override;
     constructor CreateWithHistory(AOwner: TComponent; const HistoryDirectory: string);
@@ -161,7 +154,7 @@ type
 implementation
 
 uses System.Math, System.IOUtils, System.UITypes, Winapi.Windows, System.Hash, ArtPsd, ArtPng, ArtLayerName, ArtParts,
-  ArtPipeEditorCommands;
+  ArtPipeEditorCommands, ArtEditorTheme, ArtPsdOrigin;
 
 {$R *.dfm}
 type
@@ -335,74 +328,63 @@ begin
   CreateWithHistory(AOwner,HistoryRoot);
 end;
 constructor TPsdArtEditorForm.CreateWithHistory(AOwner: TComponent; const HistoryDirectory: string);
-var RightPanel, StatusPanel, PositionPanel, PartsPanel, AiPanel, AiButtons, PreviewPanel: TPanel; FileMenu, LayerMenu, Item: TMenuItem; LabelControl: TLabel;
-    Splitter: TSplitter; EditMenu: TMenuItem;
+var RightPanel, StatusPanel, PositionPanel, PartsPanel, AiPanel, AiButtons, PreviewPanel: TPanel; Item: TMenuItem; LabelControl: TLabel;
+    Splitter: TSplitter;
 begin
   inherited Create(AOwner);
+  StyleElements := [];
+  Color := ArtEditorBackground; Font.Color := ArtEditorText;
   FHistory := TArtFileHistory.Create(HistoryDirectory);
   FExchange := TArtExchange.Create; FUndo := TArtUndo.Create;
   FBitmap := Vcl.Graphics.TBitmap.Create;
-  Menu := TMainMenu.Create(Self);
-  FileMenu := TMenuItem.Create(Self); FileMenu.Caption := 'ファイル(&F)'; Menu.Items.Add(FileMenu);
-  Item := TMenuItem.Create(Self); Item.Caption := '開く(&O)...'; Item.ShortCut := TextToShortCut('Ctrl+O');
-  Item.OnClick := OpenClick; Item.Enabled := False; FileMenu.Add(Item);
-  FSave := TMenuItem.Create(Self); FSave.Caption := '上書き保存(&S)'; FSave.ShortCut := TextToShortCut('Ctrl+S');
-  FSave.OnClick := SaveClick; FSave.Enabled := False; FileMenu.Add(FSave);
-  FSaveAs := TMenuItem.Create(Self); FSaveAs.Caption := 'PSDファイル名を変更(&A)...';
-  FSaveAs.ShortCut := TextToShortCut('Ctrl+Shift+S'); FSaveAs.OnClick := SaveAsClick;
-  FSaveAs.Enabled := False; FileMenu.Add(FSaveAs);
-  FClose := TMenuItem.Create(Self); FClose.Caption := '閉じる(&C)'; FClose.ShortCut := TextToShortCut('Ctrl+W');
-  FClose.OnClick := CloseClick; FClose.Enabled := False; FileMenu.Add(FClose);
-  Item := TMenuItem.Create(Self); Item.Caption := '-'; FileMenu.Add(Item);
-  Item := TMenuItem.Create(Self); Item.Caption := '終了(&X)'; Item.OnClick := ExitClick; FileMenu.Add(Item);
-  FHistoryMenu := TMenuItem.Create(Self); FHistoryMenu.Caption := '履歴(&H)'; FHistoryMenu.Visible := False; FileMenu.Insert(4,FHistoryMenu);
   Item := TMenuItem.Create(Self); Item.Caption := 'PNGから新規作成(&N)...'; Item.ShortCut := TextToShortCut('Ctrl+N'); Item.OnClick := NewPngClick;
   FImportItem := TMenuItem.Create(Self); FImportItem.Caption := 'PNGをレイヤーとして追加(&I)...'; FImportItem.ShortCut := TextToShortCut('Ctrl+I'); FImportItem.OnClick := ImportPngClick;
-  LayerMenu := TMenuItem.Create(Self); LayerMenu.Caption := 'レイヤー(&L)';
-  FReplaceItem := TMenuItem.Create(Self); FReplaceItem.Caption := '選択画像をPNGで置換(&R)...'; FReplaceItem.OnClick := ReplacePngClick; FReplaceItem.Enabled := False; LayerMenu.Add(FReplaceItem);
-  FPositionItem := TMenuItem.Create(Self); FPositionItem.Caption := '配置座標を入力(&P)'; FPositionItem.OnClick := PositionClick; FPositionItem.Enabled := False; LayerMenu.Add(FPositionItem);
-  FGroupItem := TMenuItem.Create(Self); FGroupItem.Caption := 'グループを作成(&G)...'; FGroupItem.OnClick := GroupClick; FGroupItem.Enabled := False; LayerMenu.Add(FGroupItem);
-  EditMenu := TMenuItem.Create(Self); EditMenu.Caption := '編集(&E)';
-  FUndoItem := TMenuItem.Create(Self); FUndoItem.Caption := '元に戻す(&U)'; FUndoItem.ShortCut := TextToShortCut('Ctrl+Z'); FUndoItem.OnClick := UndoClick; FUndoItem.Enabled := False; EditMenu.Add(FUndoItem);
-  FRedoItem := TMenuItem.Create(Self); FRedoItem.Caption := 'やり直す(&R)'; FRedoItem.ShortCut := TextToShortCut('Ctrl+Y'); FRedoItem.OnClick := RedoClick; FRedoItem.Enabled := False; EditMenu.Add(FRedoItem);
+  FReplaceItem := TMenuItem.Create(Self); FReplaceItem.Caption := '選択画像をPNGで置換(&R)...'; FReplaceItem.OnClick := ReplacePngClick; FReplaceItem.Enabled := False;
+  FPositionItem := TMenuItem.Create(Self); FPositionItem.Caption := '配置座標を入力(&P)'; FPositionItem.OnClick := PositionClick; FPositionItem.Enabled := False;
+  FGroupItem := TMenuItem.Create(Self); FGroupItem.Caption := 'グループを作成(&G)...'; FGroupItem.OnClick := GroupClick; FGroupItem.Enabled := False;
+  FUndoItem := TMenuItem.Create(Self); FUndoItem.Caption := '元に戻す(&U)'; FUndoItem.ShortCut := TextToShortCut('Ctrl+Z'); FUndoItem.OnClick := UndoClick; FUndoItem.Enabled := False;
+  FRedoItem := TMenuItem.Create(Self); FRedoItem.Caption := 'やり直す(&R)'; FRedoItem.ShortCut := TextToShortCut('Ctrl+Y'); FRedoItem.OnClick := RedoClick; FRedoItem.Enabled := False;
   Item := TMenuItem.Create(Self); Item.Caption := 'AIジョブを再開...'; Item.OnClick := RecoverAiClick;
-  RebuildHistory;
-  // Keep legacy API control objects for existing integration callers; hide their panels.
-  // The visible UI consists only of preview, read-only layers and the AI transcript.
+  // 既存の公開APIから参照する編集部品は保持し、画面にはプレビュー・レイヤー一覧・AI履歴だけを出す。
   StatusPanel := TPanel.Create(Self); StatusPanel.Parent := Self; StatusPanel.Visible := False;
-  StatusPanel.Align := alNone; StatusPanel.Height := 75;
+  StatusPanel.Align := alNone; StatusPanel.Height := Pixel(75);
   FStatus := TLabel.Create(Self); FStatus.Parent := StatusPanel;
   FStatus.Align := alClient; FStatus.WordWrap := True; FStatus.Layout := tlCenter;
   FStatus.Caption := 'PSDを開くと、レイヤー階層と画像を表示します。';
-  FActivity := TLabel.Create(Self); FActivity.Parent := StatusPanel; FActivity.Align := alBottom; FActivity.Height := 20;
-  AiPanel := TPanel.Create(Self); FReadOnlyAiPanel := AiPanel; AiPanel.Parent := Self; AiPanel.Align := alBottom; AiPanel.Height := 148;
-  FJobPath := TEdit.Create(Self);  FJobPath.Align := alBottom; FJobPath.ReadOnly := True; FJobPath.Text := 'AIジョブのフォルダーがここに表示されます。';
+  FActivity := TLabel.Create(Self); FActivity.Parent := StatusPanel; FActivity.Align := alBottom; FActivity.Height := Pixel(20);
+  AiPanel := TPanel.Create(Self); FReadOnlyAiPanel := AiPanel; AiPanel.Parent := Self; AiPanel.Align := alBottom; AiPanel.Height := Pixel(148);
+  AiPanel.BevelOuter := bvNone; AiPanel.ParentBackground := False; AiPanel.Color := ArtEditorPanel;
+  FJobPath := TArtEditorEdit.Create(Self);  FJobPath.Align := alBottom; FJobPath.ReadOnly := True; FJobPath.Text := 'AIジョブのフォルダーがここに表示されます。';
   LabelControl := TLabel.Create(Self); LabelControl.Parent := AiPanel; LabelControl.Align := alTop; LabelControl.Caption := 'AIとのやりとり';
-  AiButtons := TPanel.Create(Self); AiButtons.Parent := Self; AiButtons.Visible := False;  AiButtons.Align := alNone; AiButtons.Width := 194;
-  FExportAi := TButton.Create(Self); FExportAi.Parent := AiButtons; FExportAi.SetBounds(8,6,176,28); FExportAi.Caption := 'AI向けに書き出す'; FExportAi.OnClick := ExportAiClick; FExportAi.Enabled := False;
-  FImportAi := TButton.Create(Self); FImportAi.Parent := AiButtons; FImportAi.SetBounds(8,40,176,28); FImportAi.Caption := '生成結果を取り込む'; FImportAi.OnClick := ImportAiClick; FImportAi.Enabled := False;
-  FCancelAi := TButton.Create(Self); FCancelAi.Parent := AiButtons; FCancelAi.SetBounds(8,74,176,28); FCancelAi.Caption := 'AI処理を中止'; FCancelAi.OnClick := CancelAiClick; FCancelAi.Enabled := False;
-  FPrompt := TMemo.Create(Self); FPrompt.Parent := AiPanel; FPrompt.Align := alClient; FPrompt.ScrollBars := ssVertical; FPrompt.MaxLength := 16000;
+  AiButtons := TPanel.Create(Self); AiButtons.Parent := Self; AiButtons.Visible := False;  AiButtons.Align := alNone; AiButtons.Width := Pixel(194);
+  FExportAi := TButton.Create(Self); FExportAi.Parent := AiButtons; FExportAi.SetBounds(Pixel(8),Pixel(6),Pixel(176),Pixel(28)); FExportAi.Caption := 'AI向けに書き出す'; FExportAi.OnClick := ExportAiClick; FExportAi.Enabled := False;
+  FImportAi := TButton.Create(Self); FImportAi.Parent := AiButtons; FImportAi.SetBounds(Pixel(8),Pixel(40),Pixel(176),Pixel(28)); FImportAi.Caption := '生成結果を取り込む'; FImportAi.OnClick := ImportAiClick; FImportAi.Enabled := False;
+  FCancelAi := TButton.Create(Self); FCancelAi.Parent := AiButtons; FCancelAi.SetBounds(Pixel(8),Pixel(74),Pixel(176),Pixel(28)); FCancelAi.Caption := 'AI処理を中止'; FCancelAi.OnClick := CancelAiClick; FCancelAi.Enabled := False;
+  FPrompt := TArtEditorMemo.Create(Self); FPrompt.Parent := AiPanel; FPrompt.Align := alClient; FPrompt.ScrollBars := ssVertical; FPrompt.MaxLength := 16000;
   FPrompt.ReadOnly := True; FPrompt.Text := 'Codexからの指示を待っています。';
-  RightPanel := TPanel.Create(Self); RightPanel.Parent := Self; RightPanel.Align := alRight; RightPanel.Left := ClientWidth-420; RightPanel.Width := 420;
-  PositionPanel := TPanel.Create(Self); PositionPanel.Parent := Self; PositionPanel.Visible := False;  PositionPanel.Align := alNone; PositionPanel.Height := 58;
-  LabelControl := TLabel.Create(Self); LabelControl.Parent := PositionPanel; LabelControl.SetBounds(8,7,30,18); LabelControl.Caption := 'X';
-  FX := TSpinEdit.Create(Self); FX.Parent := PositionPanel; FX.SetBounds(25,4,95,26); FX.MinValue := -30000; FX.MaxValue := 30000; FX.Enabled := False;
-  LabelControl := TLabel.Create(Self); LabelControl.Parent := PositionPanel; LabelControl.SetBounds(128,7,25,18); LabelControl.Caption := 'Y';
-  FY := TSpinEdit.Create(Self); FY.Parent := PositionPanel; FY.SetBounds(145,4,95,26); FY.MinValue := -30000; FY.MaxValue := 30000; FY.Enabled := False;
-  FPositionApply := TButton.Create(Self); FPositionApply.Parent := PositionPanel; FPositionApply.SetBounds(250,3,95,28); FPositionApply.Caption := '配置を適用'; FPositionApply.Enabled := False; FPositionApply.OnClick := PositionClick;
-  LabelControl := TLabel.Create(Self); LabelControl.Parent := PositionPanel; LabelControl.SetBounds(8,34,400,18); LabelControl.Caption := '選択画像をプレビュー上でドラッグして配置できます。';
-  PartsPanel := TPanel.Create(Self); PartsPanel.Parent := Self; PartsPanel.Visible := False;  PartsPanel.Align := alNone; PartsPanel.Height := 96;
-  LabelControl := TLabel.Create(Self); LabelControl.Parent := PartsPanel; LabelControl.SetBounds(8,4,360,20); LabelControl.Caption := '表情・パーツ切替（* 排他選択）';
-  FPartGroup := TArtEditorDarkComboBox.Create(Self); FPartGroup.Parent := PartsPanel; FPartGroup.SetBounds(8,26,400,28); FPartGroup.Anchors := [akLeft,akTop,akRight]; FPartGroup.OnChange := PartGroupChange; FPartGroup.Enabled := False;
-  FPartChoice := TArtEditorDarkComboBox.Create(Self); FPartChoice.Parent := PartsPanel; FPartChoice.SetBounds(8,59,400,28); FPartChoice.Anchors := [akLeft,akTop,akRight]; FPartChoice.OnChange := PartChoiceChange; FPartChoice.Enabled := False;
+  RightPanel := TPanel.Create(Self); RightPanel.Parent := Self; RightPanel.Align := alRight; RightPanel.Left := ClientWidth-Pixel(360); RightPanel.Width := Pixel(360);
+  RightPanel.BevelOuter := bvNone; RightPanel.ParentBackground := False; RightPanel.Color := ArtEditorBackground;
+  RightPanel.Constraints.MinWidth := Pixel(260);
+  PositionPanel := TPanel.Create(Self); PositionPanel.Parent := Self; PositionPanel.Visible := False;  PositionPanel.Align := alNone; PositionPanel.Height := Pixel(58);
+  LabelControl := TLabel.Create(Self); LabelControl.Parent := PositionPanel; LabelControl.SetBounds(Pixel(8),Pixel(7),Pixel(30),Pixel(18)); LabelControl.Caption := 'X';
+  FX := TSpinEdit.Create(Self); FX.Parent := PositionPanel; FX.SetBounds(Pixel(25),Pixel(4),Pixel(95),Pixel(26)); FX.MinValue := -30000; FX.MaxValue := 30000; FX.Enabled := False;
+  LabelControl := TLabel.Create(Self); LabelControl.Parent := PositionPanel; LabelControl.SetBounds(Pixel(128),Pixel(7),Pixel(25),Pixel(18)); LabelControl.Caption := 'Y';
+  FY := TSpinEdit.Create(Self); FY.Parent := PositionPanel; FY.SetBounds(Pixel(145),Pixel(4),Pixel(95),Pixel(26)); FY.MinValue := -30000; FY.MaxValue := 30000; FY.Enabled := False;
+  FPositionApply := TButton.Create(Self); FPositionApply.Parent := PositionPanel; FPositionApply.SetBounds(Pixel(250),Pixel(3),Pixel(95),Pixel(28)); FPositionApply.Caption := '配置を適用'; FPositionApply.Enabled := False; FPositionApply.OnClick := PositionClick;
+  LabelControl := TLabel.Create(Self); LabelControl.Parent := PositionPanel; LabelControl.SetBounds(Pixel(8),Pixel(34),Pixel(400),Pixel(18)); LabelControl.Caption := '選択画像をプレビュー上でドラッグして配置できます。';
+  PartsPanel := TPanel.Create(Self); PartsPanel.Parent := Self; PartsPanel.Visible := False;  PartsPanel.Align := alNone; PartsPanel.Height := Pixel(96);
+  LabelControl := TLabel.Create(Self); LabelControl.Parent := PartsPanel; LabelControl.SetBounds(Pixel(8),Pixel(4),Pixel(360),Pixel(20)); LabelControl.Caption := '表情・パーツ切替（* 排他選択）';
+  FPartGroup := TArtEditorDarkComboBox.Create(Self); FPartGroup.Parent := PartsPanel; FPartGroup.SetBounds(Pixel(8),Pixel(26),Pixel(400),Pixel(28)); FPartGroup.Anchors := [akLeft,akTop,akRight]; FPartGroup.OnChange := PartGroupChange; FPartGroup.Enabled := False;
+  FPartChoice := TArtEditorDarkComboBox.Create(Self); FPartChoice.Parent := PartsPanel; FPartChoice.SetBounds(Pixel(8),Pixel(59),Pixel(400),Pixel(28)); FPartChoice.Anchors := [akLeft,akTop,akRight]; FPartChoice.OnChange := PartChoiceChange; FPartChoice.Enabled := False;
   FTree := TArtLayerList.Create(Self); FTree.Parent := RightPanel; FTree.Align := alClient;
   FTree.OnSelect := TreeChange; FTree.OnRename := LayerRename; FTree.OnAttributes := LayerAttributes;
-  Splitter := TSplitter.Create(Self); Splitter.Parent := Self; Splitter.Align := alRight; Splitter.Left := ClientWidth-424;
+  Splitter := TSplitter.Create(Self); Splitter.Parent := Self; Splitter.Align := alRight; Splitter.Left := ClientWidth-Pixel(364);
+  Splitter.Width := Pixel(4); Splitter.MinSize := Pixel(260);
+  Splitter.ParentColor := False; Splitter.Color := ArtEditorBorder;
   // Buffer only the viewer so background and scaled image appear in one frame.
   PreviewPanel := TPanel.Create(Self); PreviewPanel.Parent := Self;
   PreviewPanel.Align := alClient; PreviewPanel.BevelOuter := bvNone;
-  PreviewPanel.ParentBackground := False; PreviewPanel.Color := clGray;
+  PreviewPanel.ParentBackground := False; PreviewPanel.Color := ArtEditorBackground;
   PreviewPanel.DoubleBuffered := True;
   FPaint := TArtPreviewPaintBox.Create(Self); FPaint.Parent := PreviewPanel; FPaint.Align := alClient;
   FPaint.OnPaint := PaintPreview; FPaint.OnMouseDown := PreviewMouseDown; FPaint.OnMouseMove := PreviewMouseMove; FPaint.OnMouseUp := PreviewMouseUp;
@@ -418,6 +400,17 @@ begin
   OnCloseQuery := CheckClose;
   FProtocol := TArtPipeProtocol.Create(DispatchCommand); FPipe := TArtPipeBridge.Create(FProtocol.Handle);
   FExchange.PipeName := FPipe.Name; UpdateActivity;
+end;
+
+function TPsdArtEditorForm.Pixel(Value: Integer): Integer;
+begin
+  Result := MulDiv(Value, CurrentPPI, 96);
+end;
+
+procedure TPsdArtEditorForm.CreateWnd;
+begin
+  inherited;
+  ApplyArtEditorTitleBar(Handle);
 end;
 
 destructor TPsdArtEditorForm.Destroy;
@@ -471,7 +464,7 @@ begin
   FLastWrittenPath := ''; FLastWrittenBytes := nil;
 end;
 
-function TPsdArtEditorForm.IsManagedPath(const FileName: string): Boolean;
+function TPsdArtEditorForm.IsNewPsdPath(const FileName: string): Boolean;
 var Target, Root: string;
 begin
   Result := False;
@@ -484,17 +477,18 @@ end;
 procedure TPsdArtEditorForm.RequireManagedEdit;
 begin
   if FBusy then raise EArtFormat.Create('別の処理を実行しています。');
-  if not FManaged then raise EArtFormat.Create('外部PSDでは名前・補助記号・表示状態だけを変更できます。');
+  if not FManaged or (FOriginId='') then raise EArtFormat.Create('外部PSDでは補助記号・表示状態・切替だけを変更できます。');
   if not FCanRender then raise EArtFormat.Create('このPSDの画像・構造の編集は未対応です。'+FDocument.Unsupported.Text);
 end;
 
 procedure TPsdArtEditorForm.NewBlank(const FileName: string; Width,Height: Integer);
-var NewDoc,Old: TArtDocument; Layer: TArtLayer; Pixels: TBytes;
+var NewDoc,Old: TArtDocument; Layer: TArtLayer; Pixels: TBytes; OriginId: string;
 begin
   if FDocument<>nil then raise EArtFormat.Create('新規PSDは空の編集画面で作成してください。');
-  if not IsManagedPath(FileName) then raise EArtFormat.Create('新規PSDの保存先はホストのPSD管理フォルダ内にしてください。');
+  if not IsNewPsdPath(FileName) then raise EArtFormat.Create('新規PSDの保存先はホストのPSD管理フォルダ内にしてください。');
   if FileExists(FileName) then raise EArtFormat.Create('新規PSDと同じ名前のファイルが既に存在します。');
   if (Width<1) or (Height<1) then raise EArtFormat.Create('キャンバス寸法は1以上です。');
+  OriginId := NewArtPsdOrigin;
   NewDoc := TArtDocument.Create;
   try
     NewDoc.Width := Width; NewDoc.Height := Height;
@@ -506,7 +500,7 @@ begin
   try SetPreview(Pixels); except FDocument := Old; NewDoc.Free; raise; end;
   FTree.SetRoots(nil); Old.Free; FreeAndNil(FInitialDocument);
   FUndo.Clear; ResetAiJobs; FFileName := TPath.GetFullPath(FileName);
-  FManaged := True; FCanEdit := True; FCanRender := True; FModified := True;
+  FOriginId := OriginId; FManaged := True; FCanEdit := True; FCanRender := True; FModified := True;
   RebuildTree; UpdateStatus; SavePsdFile(FFileName);
 end;
 
@@ -523,15 +517,6 @@ begin
   SavePsdFile(Target);
 end;
 
-procedure TPsdArtEditorForm.RenameFileClick(Sender: TObject);
-var Value: string;
-begin
-  Value := ExtractFileName(FFileName);
-  if not InputQuery('PSDファイル名の変更','ファイル名',Value) then Exit;
-  try RenamePsdFile(Value);
-  except on E: Exception do MessageDlg(E.Message,mtError,[mbOK],0); end;
-end;
-
 function TPsdArtEditorForm.RenderEditable: TBytes;
 begin Result := RenderPsdLayers(FDocument); end;
 
@@ -543,7 +528,7 @@ begin
     Row := FBitmap.ScanLine[Y];
     for X := 0 to FDocument.Width-1 do begin
       P := (Y*FDocument.Width+X)*4; A := RGBA[P+3];
-      if ((X div 12+Y div 12) mod 2)=0 then Base := 225 else Base := 175;
+      if ((X div 12+Y div 12) mod 2)=0 then Base := 64 else Base := 48;
       for C := 0 to 2 do begin
         Value := (RGBA[P+C]*A+Base*(255-A)+127) div 255;
         Row[X*4+2-C] := Value;
@@ -568,7 +553,7 @@ begin
   Old := FDocument; FDocument := NewDoc;
   try SetPreview(RGBA); except FDocument := Old; NewDoc.Free; raise; end;
   FUndo.Clear; ResetAiJobs; FTree.SetRoots(nil); Old.Free; FDocument.Changed; FModified := True; FCanEdit := True; FCanRender := True;
-  FSave.Enabled := True; FSaveAs.Enabled := True; FClose.Enabled := True; RebuildTree; UpdateStatus;
+  RebuildTree; UpdateStatus;
 end;
 procedure TPsdArtEditorForm.ImportPngFile(const FileName: string);
 var Image: TArtPngData; Parent,Selected,L: TArtLayer; List: TList<TArtLayer>; Index: Integer;
@@ -675,14 +660,12 @@ begin
     except FDocument := OldDoc; NewDoc.Free; raise; end;
     // Nodes hold document pointers: clear them before releasing the previous document.
     FUndo.Clear; ResetAiJobs; FTree.SetRoots(nil); OldDoc.Free; FFileName := TPath.GetFullPath(FileName);
-    FCanRender := NewCanEdit; FCanEdit := True; FManaged := IsManagedPath(FFileName);
+    FCanRender := NewCanEdit; FCanEdit := True; FManaged := VerifyArtPsdOrigin(FDocument.SourceBytes,FOriginId);
     CaptureInitialDocument;
-    FSave.Enabled := True; FSaveAs.Enabled := FManaged; FClose.Enabled := True;
     RebuildTree; UpdateStatus;
     if not FLoadingSaved then begin
       FZoom := 1; FPanX := 0; FPanY := 0; FPaint.Invalidate;
       try FHistory.AddFile(FFileName); except on E: Exception do FStatus.Caption := FStatus.Caption+sLineBreak+'履歴保存失敗: '+E.Message; end;
-      RebuildHistory;
     end;
   finally Screen.Cursor := crDefault; end;
 end;
@@ -690,6 +673,7 @@ end;
 procedure TPsdArtEditorForm.RebuildTree;
 begin
   FTree.EditEnabled := FCanEdit;
+  FTree.NameEditEnabled := FCanEdit and FManaged;
   FTree.OpacityEnabled := FManaged and FCanRender;
   FTree.SetRoots(FDocument.Roots);
 end;
@@ -703,7 +687,6 @@ begin
   FGroupItem.Enabled := FManaged and FCanRender and (FDocument<>nil);
   FExportAi.Enabled := FManaged and FCanRender and (FDocument<>nil); FImportAi.Enabled := FExportAi.Enabled;
   if FReadOnlyAiPanel<>nil then FReadOnlyAiPanel.Visible := FManaged;
-  FSaveAs.Enabled := FManaged;
   UpdateParts; UpdateActivity;
   if CanImage then begin FX.Value := L.Bounds.Left; FY.Value := L.Bounds.Top; end;
   if FPaint<>nil then begin TArtPaintBoxAccess(FPaint).MouseCapture := False; FPaint.Cursor := crDefault; FPaint.Invalidate; end; FDragging := False;
@@ -713,29 +696,6 @@ begin
   if Layer<>FTree.Selected then raise EArtFormat.Create('Selection changed during attributes edit');
   ApplySelectedLayer(Layer.Name,Visible,Opacity);
 end;
-procedure TPsdArtEditorForm.RebuildHistory;
-  procedure Populate(Menu: TMenuItem; List: TStringList);
-  var I: Integer; Item: TMenuItem;
-  begin
-    Menu.Clear;
-    for I := 0 to List.Count-1 do begin
-      Item := TMenuItem.Create(Self); Item.Caption := StringReplace(List[I],'&','&&',[rfReplaceAll]);
-      Item.Hint := List[I]; Item.OnClick := HistoryClick; Menu.Add(Item);
-    end;
-    if Menu.Count=0 then begin
-      Item := TMenuItem.Create(Self); Item.Caption := '（履歴なし）'; Item.Enabled := False; Menu.Add(Item);
-    end;
-  end;
-begin Populate(FHistoryMenu,FHistory.Files); end;
-procedure TPsdArtEditorForm.HistoryClick(Sender: TObject);
-var FileName: string;
-begin
-  FileName := TMenuItem(Sender).Hint;
-  if not ConfirmDiscard then Exit;
-  try OpenPsdFile(FileName);
-  except on E: Exception do MessageDlg('PSDを開けませんでした。'+sLineBreak+E.Message,mtError,[mbOK],0); end;
-end;
-
 procedure TPsdArtEditorForm.LayerRename(Sender: TObject; Layer: TArtLayer; const Name: string);
 begin
   if Layer<>FTree.Selected then raise EArtFormat.Create('Selection changed during rename');
@@ -756,6 +716,8 @@ begin
   L := FTree.Selected; OldName := L.Name; OldOpacity := L.Opacity;
   if (Name<>OldName) and ((Trim(Name)='') or (Length(Name)>255)) then
     raise EArtFormat.Create('レイヤー名は1～255文字で指定してください。');
+  if not FManaged and not IsAllowedExternalLayerName(OldName,Name) then
+    raise EArtFormat.Create('外部PSDのレイヤー名本文は変更できません。補助記号だけを変更してください。');
   if not FManaged and (Opacity<>OldOpacity) then
     raise EArtFormat.Create('外部PSDの不透明度は変更できません。');
   States := TDictionary<TArtLayer,Boolean>.Create;
@@ -805,7 +767,7 @@ begin
     except on E: Exception do MessageDlg('AIジョブを再開できませんでした。'+sLineBreak+E.Message,mtError,[mbOK],0); end;
 end;
 procedure TPsdArtEditorForm.RecoverAiJob(const Directory: string);
-var Candidate,Old: TArtDocument; Job: TArtExchangeJob; Pixels: TBytes;
+var Candidate,Old: TArtDocument; Job: TArtExchangeJob; Pixels: TBytes; CandidateOrigin: string;
 begin
   RequireManagedEdit; FTree.FinishRename(True);
   if GetModified then raise EArtFormat.Create('Save the current document before recovery');
@@ -813,6 +775,8 @@ begin
   try
     Candidate := FExchange.LoadRecovery(ExcludeTrailingPathDelimiter(Directory),Job);
     try
+      if not VerifyArtPsdOrigin(Candidate.SourceBytes,CandidateOrigin) or (CandidateOrigin<>FOriginId) then
+        raise EArtFormat.Create('このPSDの作成情報を持たないAIジョブは再開できません。');
       // A reopened PSD has a fresh session ID. Bind recovery to its saved path
       // and source bytes so another PSD or a newer save cannot be replaced.
       if Job.SourceFileName<>'' then begin
@@ -832,7 +796,6 @@ begin
     FExchange.RegisterRecovered(Job); FCurrentJobId := Job.Id; FJobPath.Text := Job.Directory;
     FJobPath.Hint := Job.Directory; FJobPath.ShowHint := True;
     FPrompt.Lines.Add('Codex: '+Job.PromptText); FModified := True; FCanEdit := True; FCanRender := True;
-    FSave.Enabled := True; FSaveAs.Enabled := True; FClose.Enabled := True;
     RebuildTree; UpdateStatus;
   finally EndOperation; end;
 end;
@@ -850,7 +813,7 @@ begin
   if not FCanEdit then raise EArtFormat.Create('編集対応文書を開いてください。');
   FPrompt.Lines.Add('Codex: '+Prompt);
   FTree.FinishRename(True); BeginOperation('AI向け書出し中');
-  try Result := FExchange.ExportJob(FDocument,Prompt,Root,Workspace,FFileName); FCurrentJobId := ExtractFileName(Result);
+  try Result := FExchange.ExportJob(FDocument,Prompt,Root,Workspace,FFileName,FOriginId); FCurrentJobId := ExtractFileName(Result);
   finally EndOperation; end;
   FJobPath.Text := Result; FJobPath.Hint := Result; FJobPath.ShowHint := True;
 end;
@@ -975,8 +938,8 @@ begin
   if GetModified then Star := ' *' else Star := '';
   if FManaged then Caption := 'PSD編集 - '+ExtractFileName(FFileName)+Star
   else Caption := 'PSD編集 (外部PSD) - '+ExtractFileName(FFileName)+Star;
-  if FManaged then Mode := '管理PSD: AI・画像・構造・名前・表示を編集できます。'
-  else Mode := '外部PSD: 名前・補助記号・表示状態だけを編集できます。';
+  if FManaged then Mode := '自作PSD: AI・画像・構造・名前・表示を編集できます。'
+  else Mode := '外部PSD: 補助記号・表示状態・切替だけを編集できます。';
   if not FCanRender then Mode := Mode+' 表示変更の合成は未対応です。';
   FStatus.Caption := Format('%d × %d / %dレイヤー %s',[FDocument.Width,FDocument.Height,FTree.RowCount,Mode]);
   FStatus.Hint := FStatus.Caption; FStatus.ShowHint := True; UpdateActivity;
@@ -1015,7 +978,8 @@ begin
   if FBusy then raise EArtFormat.Create('処理中です。');
   FTree.FinishRename(True); Target := TPath.GetFullPath(FileName);
   if FManaged then begin
-    if not IsManagedPath(Target) then raise EArtFormat.Create('保存先はPSD管理フォルダ内にしてください。');
+    if not SameText(ExtractFilePath(Target),ExtractFilePath(FFileName)) then
+      raise EArtFormat.Create('PSDの保存先ディレクトリは変更できません。');
   end else if not SameText(Target,FFileName) then
     raise EArtFormat.Create('外部PSDのファイル名・保存先は変更できません。');
   if not GetModified and SameText(Target,FFileName) then Exit;
@@ -1048,11 +1012,7 @@ begin
     Screen.Cursor := crHourGlass;
     try
       if not FManaged then SaveExternalLayerPropertiesPsd(FDocument,Target)
-      else if Length(FDocument.SourceBytes)=0 then WriteNewPsd(FDocument,Target,pcRle)
-      else if GetModified then begin
-        try SaveLayerPropertiesPsd(FDocument,Target);
-        except on E: EArtFormat do SaveImageCompositionPsd(FDocument,Target); end;
-      end else SaveUnchangedPsd(FDocument,Target);
+      else SaveCreatedPsd(FDocument,Target,FOriginId);
     finally Screen.Cursor := crDefault; end;
     FLastWrittenPath := Target;
     FLastWrittenBytes := TFile.ReadAllBytes(Target);
@@ -1070,35 +1030,10 @@ begin
     if Selected<>nil then begin FTree.Selected := Selected; FTree.RevealSelected; end;
     try FHistory.AddFile(FFileName);
     except on E: Exception do FStatus.Caption := FStatus.Caption+sLineBreak+'履歴保存失敗: '+E.Message; end;
-    RebuildHistory;
   finally EndOperation; EditedDoc.Free; BeforeDoc.Free; end;
 end;
 
 
-
-procedure TPsdArtEditorForm.OpenClick(Sender: TObject);
-begin
-  if not ConfirmDiscard then Exit;
-  if FOpenDialog.Execute then
-    try if SameText(ExtractFileExt(FOpenDialog.FileName),'.png') then NewFromPng(FOpenDialog.FileName) else OpenPsdFile(FOpenDialog.FileName); except on E: Exception do MessageDlg('PSDを開けませんでした。'+sLineBreak+E.Message,mtError,[mbOK],0); end;
-end;
-
-procedure TPsdArtEditorForm.SaveClick(Sender: TObject);
-begin
-  if FDocument=nil then Exit;
-  if FFileName='' then begin SaveAsClick(Sender); Exit; end;
-  try SavePsdFile(FFileName);
-  except on E: Exception do MessageDlg('保存できませんでした。'+sLineBreak+E.Message,mtError,[mbOK],0); end;
-end;
-
-procedure TPsdArtEditorForm.CloseClick(Sender: TObject);
-begin Close; end;
-
-procedure TPsdArtEditorForm.ExitClick(Sender: TObject);
-begin Close; end;
-
-procedure TPsdArtEditorForm.SaveAsClick(Sender: TObject);
-begin RenameFileClick(Sender); end;
 
 function TPsdArtEditorForm.PreviewRect: TRect;
 var Scale: Double; W,H,X,Y: Integer;
@@ -1140,7 +1075,7 @@ begin
 end;
 procedure TPsdArtEditorForm.PaintPreview(Sender: TObject);
 begin
-  FPaint.Canvas.Brush.Color := clGray; FPaint.Canvas.FillRect(FPaint.ClientRect);
+  FPaint.Canvas.Brush.Color := ArtEditorBackground; FPaint.Canvas.FillRect(FPaint.ClientRect);
   if not FBitmap.Empty then FPaint.Canvas.StretchDraw(PreviewRect,FBitmap);
 end;
 

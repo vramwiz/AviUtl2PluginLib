@@ -20,7 +20,7 @@ type
     FEditor: TEdit;
     FEditing: TArtLayer;
     FOriginalName: string;
-    FEditEnabled, FVisibilityEnabled, FOpacityEnabled, FFinishing: Boolean;
+    FEditEnabled, FNameEditEnabled, FVisibilityEnabled, FOpacityEnabled, FFinishing: Boolean;
     FOnSelect: TNotifyEvent;
     FOnRename: TArtLayerRenameEvent;
     FPopup: TPopupMenu;
@@ -42,9 +42,13 @@ type
     function NameRect(Index: Integer): TRect;
     function Thumbnail(Layer: TArtLayer): Vcl.Graphics.TBitmap;
     procedure SendRename(const Name: string);
+    function Pixel(Value: Integer): Integer;
+    function RowStride: Integer;
+    function RowTop(Index: Integer): Integer;
   protected
     procedure Paint; override;
     procedure Resize; override;
+    procedure ChangeScale(M, D: Integer; isDpiChange: Boolean); override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer); override;
     procedure DblClick; override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
@@ -62,6 +66,7 @@ type
     function LayerAt(Index: Integer): TArtLayer;
     property Selected: TArtLayer read FSelected write SetSelected;
     property EditEnabled: Boolean read FEditEnabled write SetEditEnabled;
+    property NameEditEnabled: Boolean read FNameEditEnabled write FNameEditEnabled;
     property OpacityEnabled: Boolean read FOpacityEnabled write SetOpacityEnabled;
     property VisibilityEnabled: Boolean read FVisibilityEnabled write FVisibilityEnabled;
     property OnAttributes: TArtLayerAttributesEvent read FOnAttributes write FOnAttributes;
@@ -73,7 +78,7 @@ type
     property OnRename: TArtLayerRenameEvent read FOnRename write FOnRename;
   end;
 implementation
-uses System.SysUtils, System.Math, System.UITypes, Winapi.Windows, Vcl.Dialogs, ArtLayerName;
+uses System.SysUtils, System.Math, System.UITypes, Winapi.Windows, Vcl.Dialogs, ArtLayerName, ArtEditorTheme;
 const ROW_HEIGHT=82; GAP=6; LIST_PADDING=8; INDENT=8; THUMB_W=96; THUMB_H=54;
 constructor TArtLayerList.Create(AOwner: TComponent);
 var I: Integer; Item: TMenuItem;
@@ -81,16 +86,17 @@ const Captions: array[0..3] of string = ('反転指定なし','左右反転時 (
 begin
   inherited; DoubleBuffered := True; TabStop := True;
   ControlStyle := ControlStyle+[csOpaque,csDoubleClicks]; StyleElements := [];
-  Font.Name := 'Yu Gothic UI'; Font.Size := 10;
+  Font.Name := 'Yu Gothic UI'; Font.PixelsPerInch := CurrentPPI; Font.Height := -Pixel(13);
+  Color := ArtEditorBackground; Font.Color := ArtEditorText;
   FLayers := TList<TArtLayer>.Create; FDepths := TList<Integer>.Create;
   FCollapsed := TDictionary<TArtLayer,Boolean>.Create;
   FThumbs := TObjectDictionary<TArtLayer,Vcl.Graphics.TBitmap>.Create([doOwnsValues]);
   FSliders := TObjectList<TArtEditorHorizontalTrackBar>.Create(True);
   FScroll := TArtEditorVerticalScrollBar.Create(Self); FScroll.Parent := Self; FScroll.Align := alRight;
   FScroll.OnChange := ScrollChanged; FScroll.SmallChange := ROW_HEIGHT+GAP;
-  FEditor := TEdit.Create(Self); FEditor.Parent := Self; FEditor.Visible := False;
+  FEditor := TArtEditorEdit.Create(Self); FEditor.Parent := Self; FEditor.Visible := False;
   FEditor.OnKeyDown := EditorKey; FEditor.OnExit := EditorExit;
-  FPopup := TPopupMenu.Create(Self); FPopup.OnPopup := PopupOpening;
+  FPopup := TArtEditorPopupMenu.Create(Self); FPopup.OnPopup := PopupOpening;
   FStar := TMenuItem.Create(Self); FStar.Caption := '* 排他選択'; FStar.OnClick := PrefixClick; FPopup.Items.Add(FStar);
   FForce := TMenuItem.Create(Self); FForce.Caption := '! 強制表示'; FForce.OnClick := PrefixClick; FPopup.Items.Add(FForce);
   Item := TMenuItem.Create(Self); Item.Caption := '-'; FPopup.Items.Add(Item);
@@ -108,6 +114,29 @@ function TArtLayerList.RowCount: Integer;
 begin Result := FLayers.Count; end;
 function TArtLayerList.LayerAt(Index: Integer): TArtLayer;
 begin Result := FLayers[Index]; end;
+function TArtLayerList.Pixel(Value: Integer): Integer;
+begin Result := MulDiv(Value, CurrentPPI, 96); end;
+function TArtLayerList.RowStride: Integer;
+begin Result := Pixel(ROW_HEIGHT) + Pixel(GAP); end;
+function TArtLayerList.RowTop(Index: Integer): Integer;
+begin Result := Pixel(LIST_PADDING) + Index * RowStride - FScroll.Position; end;
+procedure TArtLayerList.ChangeScale(M, D: Integer; isDpiChange: Boolean);
+var Position: Integer;
+begin
+  Position := 0;
+  if FScroll <> nil then begin FinishRename(True); Position := FScroll.Position; end;
+  inherited;
+  if isDpiChange then
+  begin
+    Font.PixelsPerInch := M;
+    Font.Height := -MulDiv(13, M, 96);
+  end;
+  if FScroll <> nil then
+  begin
+    RefreshRows;
+    FScroll.Position := MulDiv(Position, M, D);
+  end;
+end;
 procedure TArtLayerList.SetRoots(Value: TList<TArtLayer>);
   procedure CollapseDeep(List: TList<TArtLayer>; Depth: Integer);
   var L: TArtLayer;
@@ -135,7 +164,9 @@ procedure TArtLayerList.RefreshRows;
 begin
   FLayers.Clear; FDepths.Clear;
   if Assigned(FRoots) then Add(FRoots,0);
-  FScroll.SetRange(Max(0,FLayers.Count*(ROW_HEIGHT+GAP)+LIST_PADDING*2-Height),Max(1,Height));
+  FScroll.Width := Pixel(14);
+  FScroll.SmallChange := RowStride;
+  FScroll.SetRange(Max(0,FLayers.Count*RowStride+Pixel(LIST_PADDING)*2-Height),Max(1,Height));
   FScroll.LargeChange := Max(1,Height); SyncSliders; Invalidate;
 end;
 procedure TArtLayerList.RevealSelected;
@@ -151,10 +182,10 @@ var Index,Y: Integer;
   end;
 begin
   if (FSelected=nil) or (FRoots=nil) then Exit;
-  ExpandParents(FRoots); RefreshRows; Index := FLayers.IndexOf(FSelected); if (Index<0) or (Height<ROW_HEIGHT) then Exit;
-  Y := LIST_PADDING+Index*(ROW_HEIGHT+GAP);
+  ExpandParents(FRoots); RefreshRows; Index := FLayers.IndexOf(FSelected); if (Index<0) or (Height<Pixel(ROW_HEIGHT)) then Exit;
+  Y := Pixel(LIST_PADDING)+Index*RowStride;
   if Y<FScroll.Position then FScroll.Position := Y
-  else if Y+ROW_HEIGHT>FScroll.Position+Height then FScroll.Position := Y+ROW_HEIGHT-Height;
+  else if Y+Pixel(ROW_HEIGHT)>FScroll.Position+Height then FScroll.Position := Y+Pixel(ROW_HEIGHT)-Height;
 end;
 procedure TArtLayerList.RefreshImages;
 begin FThumbs.Clear; RefreshRows; end;
@@ -167,7 +198,7 @@ begin FinishRename(False); SyncSliders; Invalidate; end;
 procedure TArtLayerList.ScrollBy(Delta: Integer);
 begin FScroll.Position := FScroll.Position+Delta; end;
 function TArtLayerList.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
-begin ScrollBy(-MulDiv(WheelDelta,ROW_HEIGHT+GAP,120)); Result := True; end;
+begin ScrollBy(-MulDiv(WheelDelta,RowStride,120)); Result := True; end;
 procedure TArtLayerList.SetSelected(Value: TArtLayer);
 begin
   if Value=FSelected then Exit;
@@ -177,25 +208,25 @@ end;
 function TArtLayerList.NameRect(Index: Integer): TRect;
 var Y,X: Integer;
 begin
-  Y := LIST_PADDING+Index*(ROW_HEIGHT+GAP)-FScroll.Position;
-  X := LIST_PADDING+Min(FDepths[Index],6)*INDENT+46+THUMB_W+10;
-  Result := Rect(X,Y+10,Width-FScroll.Width-LIST_PADDING-48,Y+38);
+  Y := RowTop(Index);
+  X := Pixel(LIST_PADDING+Min(FDepths[Index],6)*INDENT+46+THUMB_W+10);
+  Result := Rect(X,Y+Pixel(10),Max(X,Width-FScroll.Width-Pixel(LIST_PADDING+48)),Y+Pixel(38));
 end;
 procedure TArtLayerList.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
 var Index,LeftEdge: Integer; P: TPoint; L: TArtLayer;
 begin
-  inherited; if CanFocus then SetFocus; Index := (Y+FScroll.Position-LIST_PADDING) div (ROW_HEIGHT+GAP);
-  if (Y+FScroll.Position<LIST_PADDING) or (Index<0) or (Index>=FLayers.Count) then Exit;
-  if ((Y+FScroll.Position-LIST_PADDING) mod (ROW_HEIGHT+GAP)>=ROW_HEIGHT) then Exit;
+  inherited; if CanFocus then SetFocus; Index := (Y+FScroll.Position-Pixel(LIST_PADDING)) div RowStride;
+  if (Y+FScroll.Position<Pixel(LIST_PADDING)) or (Index<0) or (Index>=FLayers.Count) then Exit;
+  if ((Y+FScroll.Position-Pixel(LIST_PADDING)) mod RowStride>=Pixel(ROW_HEIGHT)) then Exit;
   L := FLayers[Index]; Selected := L;
-  if (Button=mbLeft) and (X>=LIST_PADDING) and (X<LIST_PADDING+26) then begin
+  if (Button=mbLeft) and (X>=Pixel(LIST_PADDING)) and (X<Pixel(LIST_PADDING+26)) then begin
     if (FEditEnabled or FVisibilityEnabled) and Assigned(FOnAttributes) then
       try FOnAttributes(Self,L,not L.Visible,L.Opacity);
       except on E: Exception do MessageDlg(E.Message,mtError,[mbOK],0); end;
     SyncSliders; Invalidate; Exit;
   end;
-  LeftEdge := LIST_PADDING+26+Min(FDepths[Index],6)*INDENT;
-  if (Button=mbLeft) and (X>=LeftEdge) and (X<LeftEdge+18) and (L.Kind=alkGroup) then begin
+  LeftEdge := Pixel(LIST_PADDING+26+Min(FDepths[Index],6)*INDENT);
+  if (Button=mbLeft) and (X>=LeftEdge) and (X<LeftEdge+Pixel(18)) and (L.Kind=alkGroup) then begin
     if FCollapsed.ContainsKey(L) then FCollapsed.Remove(L) else FCollapsed.Add(L,True);
     RefreshRows;
   end;
@@ -212,11 +243,11 @@ end;
 procedure TArtLayerList.BeginRename;
 var R: TRect; Index: Integer;
 begin
-  if not FEditEnabled or (FSelected=nil) then Exit;
+  if not FEditEnabled or not FNameEditEnabled or (FSelected=nil) then Exit;
   FinishRename(False); Index := FLayers.IndexOf(FSelected); if Index<0 then Exit;
   R := NameRect(Index);
   FEditing := FSelected; FOriginalName := FSelected.Name;
-  FEditor.SetBounds(R.Left,R.Top,Max(40,R.Width),26);
+  FEditor.SetBounds(R.Left,R.Top,Max(Pixel(40),R.Width),Pixel(28));
   FEditor.Text := ParseLayerName(FOriginalName).DisplayName;
   FEditor.Visible := True; FEditor.SetFocus; FEditor.SelectAll;
 end;
@@ -296,8 +327,8 @@ begin
   try
     N := 0;
     for I := 0 to FLayers.Count-1 do begin
-      Y := LIST_PADDING+I*(ROW_HEIGHT+GAP)-FScroll.Position;
-      if (Y+70<=0) or (Y+42>=Height) then Continue;
+      Y := RowTop(I);
+      if (Y+Pixel(70)<=0) or (Y+Pixel(42)>=Height) then Continue;
       if N=FSliders.Count then begin
         Slider := TArtEditorHorizontalTrackBar.Create(Self); Slider.Parent := Self;
         Slider.SetRange(0,255); Slider.ShowTicks := False; Slider.WheelChangesPosition := False;
@@ -305,9 +336,9 @@ begin
         FSliders.Add(Slider);
       end;
       Slider := FSliders[N]; Inc(N); R := NameRect(I);
-      Slider.Tag := I; Slider.SetBounds(R.Left,Y+42,Max(30,Width-FScroll.Width-LIST_PADDING-5-R.Left),28);
-      Slider.BackgroundColor := $272727;
-      if FLayers[I]=FSelected then Slider.BackgroundColor := $865E24;
+      Slider.Tag := I; Slider.SetBounds(R.Left,Y+Pixel(42),Max(Pixel(30),Width-FScroll.Width-Pixel(LIST_PADDING+5)-R.Left),Pixel(28));
+      Slider.BackgroundColor := ArtEditorPanel;
+      if FLayers[I]=FSelected then Slider.BackgroundColor := ArtEditorSelection;
       Slider.Position := FLayers[I].Opacity;
       Slider.Enabled := FEditEnabled and ((FLayers[I].Kind=alkImage) or ((FLayers[I].Kind=alkGroup) and (FLayers[I].BlendKey='norm')));
       Slider.Hint := '不透明度 '+IntToStr(Round(FLayers[I].Opacity*100/255))+'%'; Slider.ShowHint := True;
@@ -339,7 +370,7 @@ begin
   for Y := 0 to THUMB_H-1 do begin
     Row := Result.ScanLine[Y];
     for X := 0 to THUMB_W-1 do begin
-      if (X div 6+Y div 6) mod 2=0 then V := 195 else V := 145;
+      if (X div 6+Y div 6) mod 2=0 then V := 92 else V := 66;
       for C := 0 to 2 do Row[X*4+C] := V;
       Row[X*4+3] := 255;
     end;
@@ -366,33 +397,36 @@ end;
 procedure TArtLayerList.Paint;
 var I,Y,X: Integer; R,N: TRect; L: TArtLayer; Parts: TArtLayerNameParts; Info: string;
 begin
-  Canvas.Brush.Color := $1A1A1A; Canvas.FillRect(ClientRect); Canvas.Font.Assign(Font);
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := ArtEditorBackground; Canvas.FillRect(ClientRect); Canvas.Font.Assign(Font);
+  Canvas.Pen.Width := Max(1,Pixel(1));
   for I := 0 to FLayers.Count-1 do begin
-    Y := LIST_PADDING+I*(ROW_HEIGHT+GAP)-FScroll.Position;
-    if Y+ROW_HEIGHT<0 then Continue;
+    Y := RowTop(I);
+    if Y+Pixel(ROW_HEIGHT)<0 then Continue;
     if Y>Height then Break;
-    L := FLayers[I]; X := LIST_PADDING+26+Min(FDepths[I],6)*INDENT;
-    R := Rect(LIST_PADDING,Y,Width-FScroll.Width-LIST_PADDING,Y+ROW_HEIGHT);
-    if L=FSelected then Canvas.Brush.Color := $865E24 else Canvas.Brush.Color := $272727;
-    Canvas.Pen.Color := $424242; Canvas.Rectangle(R);
+    L := FLayers[I]; X := Pixel(LIST_PADDING+26+Min(FDepths[I],6)*INDENT);
+    R := Rect(Pixel(LIST_PADDING),Y,Width-FScroll.Width-Pixel(LIST_PADDING),Y+Pixel(ROW_HEIGHT));
+    if L=FSelected then Canvas.Brush.Color := ArtEditorSelection else Canvas.Brush.Color := ArtEditorPanel;
+    Canvas.Pen.Color := ArtEditorBorder; Canvas.Rectangle(R);
     Canvas.Pen.Color := $D8D8D8; Canvas.Brush.Style := bsClear;
     if L.Visible then begin
-      Canvas.Ellipse(LIST_PADDING+4,Y+31,LIST_PADDING+22,Y+44);
+      Canvas.Ellipse(Pixel(LIST_PADDING+4),Y+Pixel(31),Pixel(LIST_PADDING+22),Y+Pixel(44));
       Canvas.Brush.Style := bsSolid; Canvas.Brush.Color := $D8D8D8;
-      Canvas.Ellipse(LIST_PADDING+10,Y+34,LIST_PADDING+16,Y+41);
+      Canvas.Ellipse(Pixel(LIST_PADDING+10),Y+Pixel(34),Pixel(LIST_PADDING+16),Y+Pixel(41));
     end else begin
       Canvas.Pen.Color := $777777;
-      Canvas.MoveTo(LIST_PADDING+4,Y+42); Canvas.LineTo(LIST_PADDING+22,Y+33);
+      Canvas.MoveTo(Pixel(LIST_PADDING+4),Y+Pixel(42)); Canvas.LineTo(Pixel(LIST_PADDING+22),Y+Pixel(33));
     end;
     Canvas.Brush.Style := bsClear; Canvas.Font.Color := $E6E6E6;
     if L.Kind=alkGroup then begin
-      if FCollapsed.ContainsKey(L) then Canvas.TextOut(X+3,Y+32,'▶') else Canvas.TextOut(X+3,Y+32,'▼');
+      if FCollapsed.ContainsKey(L) then Canvas.TextOut(X+Pixel(3),Y+Pixel(32),'▶') else Canvas.TextOut(X+Pixel(3),Y+Pixel(32),'▼');
     end;
-    Canvas.Draw(X+20,Y+(ROW_HEIGHT-THUMB_H) div 2,Thumbnail(L));
+    Canvas.StretchDraw(Rect(X+Pixel(20),Y+Pixel((ROW_HEIGHT-THUMB_H) div 2),
+      X+Pixel(20+THUMB_W),Y+Pixel((ROW_HEIGHT-THUMB_H) div 2+THUMB_H)),Thumbnail(L));
     Parts := ParseLayerName(L.Name); N := NameRect(I);
     Info := Parts.Prefix+Parts.DisplayName+Parts.Suffix;
     DrawText(Canvas.Handle,PChar(Info),-1,N,DT_SINGLELINE or DT_VCENTER or DT_END_ELLIPSIS or DT_NOPREFIX);
-    N.Left := N.Right+3; N.Right := Width-FScroll.Width-LIST_PADDING-4;
+    N.Left := N.Right+Pixel(3); N.Right := Width-FScroll.Width-Pixel(LIST_PADDING+4);
     Info := IntToStr(Round(L.Opacity*100/255))+'%';
     Canvas.Font.Color := $B8B8B8;
     DrawText(Canvas.Handle,PChar(Info),-1,N,DT_SINGLELINE or DT_VCENTER or DT_RIGHT or DT_NOPREFIX);

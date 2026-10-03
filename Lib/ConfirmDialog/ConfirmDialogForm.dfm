@@ -4,17 +4,18 @@ object FormConfirmDialog: TFormConfirmDialog
   BorderIcons = [biSystemMenu]
   BorderStyle = bsDialog
   Caption = #30906#35469
-  ClientHeight = 56
+  ClientHeight = 67
   ClientWidth = 199
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -12
-  Font.Name = 'Segoe UI'
+  Font.Name = 'Yu Gothic UI'
   Font.Style = []
   FormStyle = fsStayOnTop
   OnResize = FormResize
   OnShow = FormShow
+  PixelsPerInch = 96
   TextHeight = 15
   object PanelCaption: TDarkPanel
     Left = 0
@@ -29,7 +30,7 @@ object FormConfirmDialog: TFormConfirmDialog
     Left = 0
     Top = 35
     Width = 199
-    Height = 21
+    Height = 32
     Align = alClient
     BevelOuter = bvNone
     TabOrder = 1
@@ -37,7 +38,7 @@ object FormConfirmDialog: TFormConfirmDialog
       Left = 75
       Top = 0
       Width = 23
-      Height = 21
+      Height = 32
       Align = alLeft
       Caption = 'OK'
       Visible = False
@@ -49,7 +50,7 @@ object FormConfirmDialog: TFormConfirmDialog
       Left = 101
       Top = 0
       Width = 23
-      Height = 21
+      Height = 32
       Align = alRight
       Caption = #12461#12515#12531#12475#12523
       Visible = False
@@ -61,7 +62,7 @@ object FormConfirmDialog: TFormConfirmDialog
       Left = 0
       Top = 0
       Width = 75
-      Height = 21
+      Height = 32
       Align = alLeft
       Caption = 'OK'
       Default = True
@@ -71,7 +72,7 @@ object FormConfirmDialog: TFormConfirmDialog
       Left = 124
       Top = 0
       Width = 75
-      Height = 21
+      Height = 32
       Align = alRight
       Cancel = True
       Caption = #12461#12515#12531#12475#12523

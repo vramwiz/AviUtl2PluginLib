@@ -6,6 +6,7 @@ type
     Prefix, DisplayName, Suffix: string;
   end;
 function ParseLayerName(const Name: string): TArtLayerNameParts;
+function IsAllowedExternalLayerName(const Original, Name: string): Boolean;
 function RenameLayerDisplay(const Original, DisplayName: string): string;
 function SetLayerPrefix(const Original, Prefix: string): string;
 function SetLayerFlip(const Original, Suffix: string): string;
@@ -31,6 +32,18 @@ begin
     Result.Suffix := S+Result.Suffix; SetLength(Body,Length(Body)-Length(S));
   until False;
   Result.DisplayName := Body;
+end;
+function IsAllowedExternalLayerName(const Original, Name: string): Boolean;
+var BeforeParts,AfterParts: TArtLayerNameParts;
+begin
+  if Original=Name then Exit(True);
+  BeforeParts := ParseLayerName(Original); AfterParts := ParseLayerName(Name);
+  Result := (BeforeParts.DisplayName=AfterParts.DisplayName) and
+    ((AfterParts.Prefix=BeforeParts.Prefix) or (AfterParts.Prefix='') or
+      (AfterParts.Prefix='*') or (AfterParts.Prefix='!')) and
+    ((AfterParts.Suffix=BeforeParts.Suffix) or (AfterParts.Suffix='') or
+      (AfterParts.Suffix=':flipx') or (AfterParts.Suffix=':flipy') or
+      (AfterParts.Suffix=':flipxy'));
 end;
 function RenameLayerDisplay(const Original, DisplayName: string): string;
 var Parts: TArtLayerNameParts;

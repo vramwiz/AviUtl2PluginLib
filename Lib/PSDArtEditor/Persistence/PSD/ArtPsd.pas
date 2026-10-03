@@ -9,6 +9,7 @@ function RenderPsdLayers(Document: TArtDocument): TBytes;
 procedure SaveImageCompositionPsd(Document: TArtDocument; const FileName: string);
 procedure SaveLayerPropertiesPsd(Document: TArtDocument; const FileName: string);
 procedure SaveExternalLayerPropertiesPsd(Document: TArtDocument; const FileName: string);
+procedure SaveCreatedPsd(Document: TArtDocument; const FileName, OriginId: string);
 procedure LoadPsd(var Document: TArtDocument; const FileName: string);
 type TPsdCompression = (pcRaw, pcRle);
 procedure WriteNewPsd(Document: TArtDocument; const FileName: string;
@@ -20,7 +21,7 @@ procedure SaveEditedPsd(Document: TArtDocument; const FileName: string;
 implementation
 
 uses
-  System.Classes, System.IOUtils, System.Generics.Collections, Winapi.Windows;
+  System.Classes, System.IOUtils, System.Generics.Collections, Winapi.Windows, ArtPsdOrigin, ArtLayerName;
 
 type
   TReader = class
@@ -662,6 +663,39 @@ begin
   end;
 end;
 
+procedure SaveCreatedPsd(Document: TArtDocument; const FileName, OriginId: string);
+var SourceId,CheckedId,Destination,TempName: string; G: TGUID;
+    Data: TBytes; Checked: TArtDocument;
+begin
+  if (Document=nil) or (OriginId='') then raise EArtFormat.Create('PSD作成情報がありません。');
+  if (Length(Document.SourceBytes)>0) and
+    (not VerifyArtPsdOrigin(Document.SourceBytes,SourceId) or (SourceId<>OriginId)) then
+    raise EArtFormat.Create('PSD作成情報が検証できないため、画像・構造の編集は保存できません。');
+  Destination := TPath.GetFullPath(FileName); CreateGUID(G);
+  TempName := Destination+'.'+GUIDToString(G)+'.origin.tmp';
+  try
+    if Length(Document.SourceBytes)=0 then WriteNewPsd(Document,TempName,pcRle)
+    else begin
+      try SaveLayerPropertiesPsd(Document,TempName);
+      except on E: EArtFormat do SaveImageCompositionPsd(Document,TempName); end;
+    end;
+    Data := SealArtPsdOrigin(TFile.ReadAllBytes(TempName),OriginId);
+    TFile.WriteAllBytes(TempName,Data);
+    if not VerifyArtPsdOrigin(Data,CheckedId) or (CheckedId<>OriginId) then
+      raise EArtFormat.Create('保存するPSDの作成情報が不正です。');
+    Checked := ReadPsd(TempName);
+    try
+      if (Checked.Width<>Document.Width) or (Checked.Height<>Document.Height) then
+        raise EArtFormat.Create('PSD作成情報の保存検証に失敗しました。');
+    finally Checked.Free; end;
+    // Publish only a complete, readable and authenticated PSD.
+    if not MoveFileEx(PChar(TempName),PChar(Destination),MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
+      RaiseLastOSError;
+    TempName := '';
+  finally
+    if (TempName<>'') and TFile.Exists(TempName) then TFile.Delete(TempName);
+  end;
+end;
 procedure SaveUnchangedPsd(Document: TArtDocument; const FileName: string);
 var Original: TArtDocument; TempName, Destination: string; G: TGUID;
     I: Integer;
@@ -974,8 +1008,10 @@ var Original, Parsed, Checked, ParsedChecked: TArtDocument;
         if (N.Name<>O.Name) or (N.Visible<>O.Visible) or (N.Opacity<>O.Opacity) then
           raise EArtFormat.Create('Properties save verification failed');
       end else begin
+        if ExternalOnly and not IsAllowedExternalLayerName(O.Name,N.Name) then
+          raise EArtFormat.Create('外部PSDのレイヤー名本文は変更できません。');
         if ExternalOnly and (N.Opacity<>O.Opacity) then
-          raise EArtFormat.Create('External PSD permits only layer names and visibility changes');
+          raise EArtFormat.Create('External PSD permits only naming modifiers and visibility changes');
         AppearanceChanged := AppearanceChanged or (N.Visible<>O.Visible) or (N.Opacity<>O.Opacity);
         AnyChanged := AnyChanged or (N.Name<>O.Name) or (N.Visible<>O.Visible) or (N.Opacity<>O.Opacity);
         if Map.ContainsKey(N.SourceIndex) then raise EArtFormat.Create('Repeated source layer');

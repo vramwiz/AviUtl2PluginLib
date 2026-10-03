@@ -27,7 +27,8 @@ begin
   Style := csOwnerDrawFixed;
   StyleElements := [];
   ParentColor := False; Color := $00303030;
-  ParentFont := False; Font.Name := 'Segoe UI'; Font.Size := 10; Font.Color := $00EEEEEE;
+  ParentFont := False; Font.Name := 'Yu Gothic UI'; Font.PixelsPerInch := CurrentPPI;
+  Font.Height := -MulDiv(13,CurrentPPI,96); Font.Color := $00EEEEEE;
   DropDownCount := 8; Width := 200;
 end;
 procedure TArtEditorDarkComboBox.CreateWnd;
@@ -58,7 +59,15 @@ begin inherited; UpdateMetrics; end;
 procedure TArtEditorDarkComboBox.CMEnabledChanged(var Message: TMessage);
 begin inherited; Invalidate; end;
 procedure TArtEditorDarkComboBox.ChangeScale(M,D: Integer; isDpiChange: Boolean);
-begin inherited; UpdateMetrics; end;
+begin
+  inherited;
+  if isDpiChange then
+  begin
+    Font.PixelsPerInch := M;
+    Font.Height := -MulDiv(13,M,96);
+  end;
+  UpdateMetrics;
+end;
 procedure TArtEditorDarkComboBox.Change;
 begin inherited; Invalidate; end;
 procedure TArtEditorDarkComboBox.DrawItem(Index: Integer; Rect: TRect; State: TOwnerDrawState);
