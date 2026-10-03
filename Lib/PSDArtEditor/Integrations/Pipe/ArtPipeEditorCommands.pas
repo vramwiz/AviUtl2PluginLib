@@ -21,7 +21,8 @@ function EditorPipeCommands: TJSONArray;
 begin
   Result := TJSONArray.Create;
   for var Command in ['status', 'document', 'update-layer', 'save', 'rename-file',
-    'new-from-png', 'import-png', 'replace-png', 'move-layer', 'create-group', 'select-part',
+    'new-from-png', 'import-png', 'replace-png', 'move-layer', 'reorder-layer', 'swap-layers',
+    'delete-layer', 'create-group', 'select-part',
     'export', 'import', 'progress', 'cancel', 'recover', 'undo', 'redo'] do Result.Add(Command);
 end;
 
@@ -37,11 +38,13 @@ end;
 function EditorDocumentJson(Editor: TPsdArtEditorForm): TJSONObject;
 var Layers: TJSONArray;
   procedure AddLayers(List: TList<TArtLayer>; const Parent: string);
-  var Item: TArtLayer; Json: TJSONObject;
+  var Item: TArtLayer; Json: TJSONObject; Index: Integer;
   begin
-    for Item in List do begin
+    for Index := 0 to List.Count - 1 do begin
+      Item := List[Index];
       Json := TJSONObject.Create; Layers.AddElement(Json);
       Json.AddPair('id', Item.Id); Json.AddPair('parentId', Parent); Json.AddPair('name', Item.Name);
+      Json.AddPair('index', TJSONNumber.Create(Index));
       Json.AddPair('kind', TJSONNumber.Create(Ord(Item.Kind)));
       Json.AddPair('visible', TJSONBool.Create(Item.Visible));
       Json.AddPair('opacity', TJSONNumber.Create(Item.Opacity));
@@ -73,8 +76,8 @@ end;
 
 function TryEditorPipeCommand(Editor: TPsdArtEditorForm; const Command: string;
   Args: TJSONObject; out Data: TJSONObject): Boolean;
-var Layer, Previous: TArtLayer; Version: UInt64; Name, Path: string;
-    Visible, Exclusive: Boolean; Opacity, X, Y: Integer;
+var Layer, Parent, Other: TArtLayer; Version: UInt64; Name, Path, PreviousId: string;
+    Visible, Exclusive: Boolean; Opacity, X, Y, Index: Integer;
   function Target(const Key: string; AllowRoot: Boolean = False): TArtLayer;
   var Id: string;
   begin
@@ -99,7 +102,8 @@ begin
   Data := nil;
   Result := (Command = 'document') or (Command = 'update-layer') or (Command = 'save') or
     (Command = 'rename-file') or (Command = 'new-from-png') or (Command = 'import-png') or
-    (Command = 'replace-png') or (Command = 'move-layer') or (Command = 'create-group') or
+    (Command = 'replace-png') or (Command = 'move-layer') or (Command = 'reorder-layer') or
+    (Command = 'swap-layers') or (Command = 'delete-layer') or (Command = 'create-group') or
     (Command = 'select-part');
   if not Result then Exit;
   if Command = 'document' then begin Data := EditorDocumentJson(Editor); Exit; end;
@@ -116,7 +120,8 @@ begin
     if Editor.Modified then raise EArtFormat.Create('Save the current document before PNG initialization');
     Editor.NewFromPng(CommandString(Args, 'fileName'));
   end else begin
-    Previous := Editor.LayerList.Selected;
+    PreviousId := '';
+    if Editor.LayerList.Selected <> nil then PreviousId := Editor.LayerList.Selected.Id;
     try
       if Command = 'update-layer' then begin
         Layer := Target('layerId'); Name := Layer.Name; Visible := Layer.Visible; Opacity := Layer.Opacity;
@@ -131,7 +136,13 @@ begin
       end else if Command = 'select-part' then Editor.SelectPart(Target('layerId'))
       else begin
         RequireManaged;
-        if (Command = 'import-png') or (Command = 'create-group') then begin
+        if Command = 'delete-layer' then Editor.DeleteLayer(Target('layerId'))
+        else if Command = 'reorder-layer' then begin
+          Layer := Target('layerId'); Parent := Target('parentId', True);
+          Index := CommandInteger(Args, 'index'); Editor.ReorderLayer(Layer, Parent, Index);
+        end else if Command = 'swap-layers' then begin
+          Layer := Target('layerId'); Other := Target('otherLayerId'); Editor.SwapLayers(Layer, Other);
+        end else if (Command = 'import-png') or (Command = 'create-group') then begin
           Layer := Target('parentId', True);
           if (Layer <> nil) and (Layer.Kind <> alkGroup) then raise EArtFormat.Create('Parent must be a group');
           if Command = 'import-png' then begin
@@ -155,7 +166,7 @@ begin
           end;
         end;
       end;
-    except Editor.LayerList.Selected := Previous; raise; end;
+    except Editor.LayerList.Selected := Editor.Document.FindLayer(PreviousId); raise; end;
   end;
   Data := EditorDocumentJson(Editor);
 end;

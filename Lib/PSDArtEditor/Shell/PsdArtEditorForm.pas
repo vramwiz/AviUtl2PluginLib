@@ -70,6 +70,7 @@ type
     procedure EndOperation;
     procedure BeginEdit;
     procedure CommitEdit;
+    procedure CommitLayerStructure(var Candidate: TArtDocument; const SelectedId: string);
     procedure RestoreEdit(Redo: Boolean);
     procedure UndoClick(Sender: TObject);
     procedure RedoClick(Sender: TObject);
@@ -136,6 +137,12 @@ type
     procedure ImportPngFile(const FileName: string);
     procedure ReplaceSelectedPng(const FileName: string);
     procedure MoveSelectedLayer(X,Y: Integer);
+    // 管理PSDの画像・グループ全体を移動／入れ替え。内容と絶対座標を保持し、1回のUndoで復元する。
+    // Indexは対象を除いた後の兄弟順（0が最前面）。Parent=nilは最上位。
+    procedure ReorderLayer(Layer, Parent: TArtLayer; Index: Integer);
+    procedure SwapLayers(Layer, Other: TArtLayer);
+    // 管理PSDの対象画像／グループと全ての子を削除。最後の最上位項目は残し、Undoで復元できる。
+    procedure DeleteLayer(Layer: TArtLayer);
     procedure OpenPsdFile(const FileName: string);
     procedure SavePsdFile(const FileName: string);
     // 明示的なパーツ選択では、既に可視の対象でも兄弟の排他状態を揃える。
@@ -611,6 +618,64 @@ begin
   except L.Bounds := OldBounds; L.MaskBounds := OldMask; raise; end;
   FDocument.Changed; CommitEdit; FModified := True; TreeChange(Self); UpdateStatus;
 end;
+procedure TPsdArtEditorForm.CommitLayerStructure(var Candidate: TArtDocument; const SelectedId: string);
+var Pixels: TBytes; Old: TArtDocument;
+begin
+  // Validate and render the complete candidate before replacing the live document.
+  Pixels := RenderPsdLayers(Candidate); Candidate.Changed; BeginEdit;
+  Old := FDocument; FDocument := Candidate;
+  try SetPreview(Pixels); except FDocument := Old; raise; end;
+  Candidate := nil; FTree.SetRoots(nil); Old.Free;
+  CommitEdit; FModified := True; RebuildTree;
+  FTree.Selected := FDocument.FindLayer(SelectedId); FTree.RevealSelected; UpdateStatus;
+end;
+
+procedure TPsdArtEditorForm.ReorderLayer(Layer, Parent: TArtLayer; Index: Integer);
+var Candidate: TArtDocument; Target, NewParent: TArtLayer; SelectedId: string;
+begin
+  RequireManagedEdit; FTree.FinishRename(True);
+  if (Layer = nil) or (FDocument.FindLayer(Layer.Id) <> Layer) then
+    raise EArtFormat.Create('文書内のレイヤーを指定してください。');
+  if (Parent <> nil) and (FDocument.FindLayer(Parent.Id) <> Parent) then
+    raise EArtFormat.Create('文書内の親グループを指定してください。');
+  SelectedId := Layer.Id; Candidate := FDocument.Clone;
+  try
+    Target := Candidate.FindLayer(SelectedId); NewParent := nil;
+    if Parent <> nil then NewParent := Candidate.FindLayer(Parent.Id);
+    if Candidate.MoveLayer(Target, NewParent, Index) then CommitLayerStructure(Candidate, SelectedId);
+  finally Candidate.Free; end;
+end;
+
+procedure TPsdArtEditorForm.SwapLayers(Layer, Other: TArtLayer);
+var Candidate: TArtDocument; SelectedId: string;
+begin
+  RequireManagedEdit; FTree.FinishRename(True);
+  if (Layer = nil) or (Other = nil) or (FDocument.FindLayer(Layer.Id) <> Layer) or
+    (FDocument.FindLayer(Other.Id) <> Other) then
+    raise EArtFormat.Create('文書内の2つのレイヤーを指定してください。');
+  SelectedId := Layer.Id; Candidate := FDocument.Clone;
+  try
+    if Candidate.SwapLayers(Candidate.FindLayer(SelectedId), Candidate.FindLayer(Other.Id)) then
+      CommitLayerStructure(Candidate, SelectedId);
+  finally Candidate.Free; end;
+end;
+
+procedure TPsdArtEditorForm.DeleteLayer(Layer: TArtLayer);
+var Candidate: TArtDocument; SelectedId: string;
+begin
+  RequireManagedEdit; FTree.FinishRename(True);
+  if (Layer = nil) or (FDocument.FindLayer(Layer.Id) <> Layer) then
+    raise EArtFormat.Create('文書内のレイヤーを指定してください。');
+  SelectedId := '';
+  if FTree.Selected <> nil then SelectedId := FTree.Selected.Id;
+  Candidate := FDocument.Clone;
+  try
+    Candidate.DeleteLayer(Candidate.FindLayer(Layer.Id));
+    if Candidate.FindLayer(SelectedId) = nil then SelectedId := Candidate.Roots[0].Id;
+    CommitLayerStructure(Candidate, SelectedId);
+  finally Candidate.Free; end;
+end;
+
 procedure TPsdArtEditorForm.NewPngClick(Sender: TObject);
 begin
   if not ConfirmDiscard then Exit;

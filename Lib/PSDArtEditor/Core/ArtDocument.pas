@@ -37,6 +37,8 @@ type
   TArtDocument = class
   private
     FOwnedLayers: TObjectList<TArtLayer>;
+    function LayerLocation(Layer: TArtLayer; out Depth: Integer): TList<TArtLayer>;
+    procedure CheckLayerPlacement(Layer, Parent: TArtLayer);
   public
     SessionId: string;
     Revision: UInt64;
@@ -55,6 +57,13 @@ type
     procedure RemoveNewLayer(Layer: TArtLayer);
     function Clone: TArtDocument;
     function FindLayer(const LayerId: string): TArtLayer;
+    // Index is the final, zero-based sibling position after removing Layer.
+    // These operations preserve layer identity/content; the editor advances Revision.
+    function MoveLayer(Layer, Parent: TArtLayer; Index: Integer): Boolean;
+    function SwapLayers(Layer, Other: TArtLayer): Boolean;
+    // Remove an image or a complete group subtree. At least one root must remain.
+    // Source archive indices of surviving layers are preserved; the editor advances Revision.
+    procedure DeleteLayer(Layer: TArtLayer);
     procedure Changed;
     procedure ValidateForNewSave;
     function RenderRGBA: TBytes;
@@ -89,7 +98,9 @@ function SameArtLayers(Left, Right: TList<TArtLayer>; Mode: TArtCompareMode;
 var J: Integer; L, R: TArtLayer;
 begin
   Result := False;
-  if (Depth > 128) or (Left.Count <> Right.Count) then Exit;
+  if Left.Count <> Right.Count then Exit;
+  if Left.Count = 0 then Exit(True);
+  if Depth > 128 then Exit;
   for J := 0 to Left.Count - 1 do begin
     L := Left[J]; R := Right[J];
     if (L = nil) or (R = nil) or (L.Kind <> R.Kind) then Exit;
@@ -256,6 +267,106 @@ begin
   Result := nil;
   for L in FOwnedLayers do if L.Id=LayerId then Exit(L);
 end;
+
+function TArtDocument.LayerLocation(Layer: TArtLayer; out Depth: Integer): TList<TArtLayer>;
+  function Find(List: TList<TArtLayer>; Level: Integer): TList<TArtLayer>;
+  var Item: TArtLayer;
+  begin
+    if List.Count = 0 then Exit(nil);
+    if Level > 128 then raise EArtFormat.Create('Group depth limit exceeded');
+    if List.Contains(Layer) then begin Depth := Level; Exit(List); end;
+    for Item in List do begin
+      Result := Find(Item.Children, Level + 1);
+      if Result <> nil then Exit;
+    end;
+    Result := nil;
+  end;
+begin
+  if (Layer = nil) or not FOwnedLayers.Contains(Layer) then
+    raise EArtFormat.Create('Layer does not belong to this document');
+  Result := Find(Roots, 0);
+  if Result = nil then raise EArtFormat.Create('Layer is not in the document tree');
+end;
+
+procedure TArtDocument.CheckLayerPlacement(Layer, Parent: TArtLayer);
+var Depth, Height: Integer;
+  function SubtreeHeight(Item: TArtLayer; Level: Integer): Integer;
+  var Child: TArtLayer;
+  begin
+    if (Item = Parent) then raise EArtFormat.Create('Cannot move a layer into itself or its descendants');
+    if Level > 128 then raise EArtFormat.Create('Group depth limit exceeded');
+    Result := 0;
+    // An empty group still opens one nesting level in PSD validation.
+    if Item.Kind = alkGroup then Result := 1;
+    for Child in Item.Children do Result := Max(Result, 1 + SubtreeHeight(Child, Level + 1));
+  end;
+begin
+  LayerLocation(Layer, Depth);
+  Height := SubtreeHeight(Layer, 0);
+  if Parent = nil then Depth := 0
+  else begin
+    LayerLocation(Parent, Depth);
+    if Parent.Kind <> alkGroup then raise EArtFormat.Create('Parent must be a group');
+    Inc(Depth);
+  end;
+  if Depth + Height > 128 then raise EArtFormat.Create('Group depth limit exceeded');
+end;
+
+function TArtDocument.MoveLayer(Layer, Parent: TArtLayer; Index: Integer): Boolean;
+var Source, Target: TList<TArtLayer>; Depth, OldIndex, Count: Integer;
+begin
+  CheckLayerPlacement(Layer, Parent);
+  Source := LayerLocation(Layer, Depth); OldIndex := Source.IndexOf(Layer);
+  if Parent = nil then Target := Roots else Target := Parent.Children;
+  Count := Target.Count; if Source = Target then Dec(Count);
+  if (Index < 0) or (Index > Count) then raise EArtFormat.Create('Layer index is out of range');
+  Result := (Source <> Target) or (OldIndex <> Index);
+  if not Result then Exit;
+  // Reserve before detaching, so allocation failure leaves the tree intact.
+  if Source <> Target then Target.Capacity := Max(Target.Capacity, Target.Count + 1);
+  Source.Delete(OldIndex); Target.Insert(Index, Layer);
+end;
+
+function TArtDocument.SwapLayers(Layer, Other: TArtLayer): Boolean;
+var Left, Right: TList<TArtLayer>; Depth, LeftIndex, RightIndex: Integer;
+    LeftParent, RightParent, Item: TArtLayer;
+begin
+  Left := LayerLocation(Layer, Depth); Right := LayerLocation(Other, Depth);
+  Result := Layer <> Other;
+  if not Result then Exit;
+  LeftParent := nil; RightParent := nil;
+  for Item in FOwnedLayers do begin
+    if Item.Children = Left then LeftParent := Item;
+    if Item.Children = Right then RightParent := Item;
+  end;
+  // Reject ancestor/descendant swaps and excessive nesting before any mutation.
+  CheckLayerPlacement(Layer, RightParent); CheckLayerPlacement(Other, LeftParent);
+  LeftIndex := Left.IndexOf(Layer); RightIndex := Right.IndexOf(Other);
+  Left[LeftIndex] := Other; Right[RightIndex] := Layer;
+end;
+
+procedure TArtDocument.DeleteLayer(Layer: TArtLayer);
+var Source, Subtree: TList<TArtLayer>; Seen: TDictionary<TArtLayer, Boolean>; Depth: Integer;
+  procedure Collect(Item: TArtLayer; Level: Integer);
+  var Child: TArtLayer;
+  begin
+    if (Level > 128) or (Item = nil) or not FOwnedLayers.Contains(Item) or Seen.ContainsKey(Item) then
+      raise EArtFormat.Create('Invalid, repeated or cyclic layer reference');
+    Seen.Add(Item, True); Subtree.Add(Item);
+    for Child in Item.Children do Collect(Child, Level + 1);
+  end;
+begin
+  Source := LayerLocation(Layer, Depth);
+  if (Source = Roots) and (Roots.Count = 1) then
+    raise EArtFormat.Create('At least one root layer must remain');
+  Subtree := TList<TArtLayer>.Create; Seen := TDictionary<TArtLayer, Boolean>.Create;
+  try
+    // Collect before detaching, so validation/allocation failure leaves the tree intact.
+    Collect(Layer, 0); Source.Remove(Layer);
+    for var Item in Subtree do FOwnedLayers.Remove(Item);
+  finally Seen.Free; Subtree.Free; end;
+end;
+
 function TArtDocument.Clone: TArtDocument;
   procedure CopyTree(List: TList<TArtLayer>; Parent: TArtLayer);
   var L,N: TArtLayer;

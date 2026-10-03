@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$PipeName,
     [Parameter(Mandatory = $true)]
     [ValidateSet('status', 'document', 'update-layer', 'save', 'rename-file',
-        'new-from-png', 'import-png', 'replace-png', 'move-layer', 'create-group', 'select-part',
+        'new-from-png', 'import-png', 'replace-png', 'move-layer', 'reorder-layer', 'swap-layers', 'delete-layer', 'create-group', 'select-part',
         'export', 'import', 'progress', 'cancel', 'undo', 'redo', 'recover')]
     [string]$Command,
     [string]$ArgsJson = '{}',
@@ -23,7 +23,7 @@ try {
     $client.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
     $write = $client.WriteAsync($payload, 0, $payload.Length)
     if (-not $write.Wait($TimeoutMs)) { throw 'Pipe write timed out' }
-    $write.GetAwaiter().GetResult()
+    [void]$write.GetAwaiter().GetResult()
     $buffer = [byte[]]::new(65536)
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {

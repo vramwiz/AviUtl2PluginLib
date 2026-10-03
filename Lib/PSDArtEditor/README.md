@@ -10,6 +10,8 @@ Syncroh2 と他の Delphi VCL ホストから利用できる PSD 編集部品で
 - `CreateForHost(Owner, ManagedRoot, ExchangeRoot, HistoryRoot)` で各保存先を明示
 - `OpenPsdFile(FileName)` → `Show` で既存 PSD 編集
 - `NewBlank(FileName, Width, Height)` で透明な画像レイヤー1枚を作成・保存
+- `ReorderLayer(Layer, Parent, Index)` / `SwapLayers(Layer, Other)` で画像・グループの構成を変更。管理PSD限定、Undo/Redo対応
+- `DeleteLayer(Layer)` で画像／グループと全ての子を削除。管理PSD限定、最後の最上位項目は保持し、Undo/Redo対応
 - `OnSaved(Sender, Info)` で `OldFileName` / `NewFileName`、変更種別を通知
 - `OriginalDocument` / `EditedDocument` は通知中だけ有効な Clone。
   保存後再読込で失われる内部 ID を保った編集前後文書を渡します。
@@ -53,6 +55,6 @@ Support は既存共通部品との DPI・配色・transport 差を隔離する�
 
 パイプと PNG/JSON の操作手順は [通信仕様](通信仕様.md) を参照してください。
 
-パイプはPNG初期化・追加・置換・座標移動・グループ作成・排他パーツ選択にも対応します。
+パイプはPNG初期化・追加・置換・座標移動・階層と順序変更・レイヤー入れ替え・削除・グループ作成・排他パーツ選択にも対応します。
 statusのsupportedCommandsで接続先の対応を確認できます。AIジョブは元PSDのパスとSHA-256を記録し、
 同じ保存内容のPSDを開き直した後でもrecoverで復元できます。
