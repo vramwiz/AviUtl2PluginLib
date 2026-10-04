@@ -5,6 +5,9 @@ interface
 uses System.SysUtils, ArtDocument;
 
 function ReadPsd(const FileName: string): TArtDocument;
+// Parse an existing immutable archive without writing a temporary source file.
+// The document shares Data as SourceBytes; callers must not modify that array.
+function ReadPsdBytes(const Data: TBytes): TArtDocument;
 function RenderPsdLayers(Document: TArtDocument): TBytes;
 procedure SaveImageCompositionPsd(Document: TArtDocument; const FileName: string);
 procedure SaveLayerPropertiesPsd(Document: TArtDocument; const FileName: string);
@@ -84,12 +87,19 @@ begin
 end;
 
 function TReader.U16: Word;
-var A: Word;
-begin A := U8; Result := (A shl 8) or U8; end;
+var P: Integer;
+begin
+  P := Position; Skip(2);
+  Result := (Word(FData[P]) shl 8) or FData[P+1];
+end;
 
 function TReader.U32: Cardinal;
-var A: Cardinal;
-begin A := U16; Result := (A shl 16) or U16; end;
+var P: Integer;
+begin
+  P := Position; Skip(4);
+  Result := (Cardinal(FData[P]) shl 24) or (Cardinal(FData[P+1]) shl 16) or
+    (Cardinal(FData[P+2]) shl 8) or FData[P+3];
+end;
 
 function TReader.I16: SmallInt;
 var V: Word;
@@ -123,10 +133,19 @@ procedure TWriter.U8(Value: Byte);
 begin WriteBuffer(Value, 1); end;
 
 procedure TWriter.U16(Value: Word);
-begin U8(Byte(Value shr 8)); U8(Byte(Value and $FF)); end;
+var Data: array[0..1] of Byte;
+begin
+  Data[0] := Byte(Value shr 8); Data[1] := Byte(Value and $FF);
+  WriteBuffer(Data,SizeOf(Data));
+end;
 
 procedure TWriter.U32(Value: Cardinal);
-begin U16(Word(Value shr 16)); U16(Word(Value and $FFFF)); end;
+var Data: array[0..3] of Byte;
+begin
+  Data[0] := Byte(Value shr 24); Data[1] := Byte((Value shr 16) and $FF);
+  Data[2] := Byte((Value shr 8) and $FF); Data[3] := Byte(Value and $FF);
+  WriteBuffer(Data,SizeOf(Data));
+end;
 
 procedure TWriter.FourCC(const Value: AnsiString);
 begin
@@ -255,37 +274,48 @@ begin
   Result := L;
 end;
 
-function DecodePlane(R: TReader; Width, Height: Integer): TBytes;
-var Compression: Word; Sizes: TArray<Word>; Y, X, N, Count, I, P: Integer;
-    Row: TReader; Value: Byte;
+function DecodeRleRows(R: TReader; Width, Height: Integer;
+  const Sizes: TArray<Word>; First: Integer): TBytes;
+var Y,X,N,Count,P,RowEnd,OutPos: Integer;
 begin
   SetLength(Result, PixelByteCount(Width, Height, 1));
+  if (First<0) or (Height>Length(Sizes)-First) then
+    raise EArtFormat.Create('Invalid PackBits row table');
+  for Y := 0 to Height-1 do begin
+    P := R.Position; R.Skip(Sizes[First+Y]); RowEnd := R.Position; X := 0;
+    // Validate the complete input row and each output span before bulk copying.
+    while P<RowEnd do begin
+      N := R.FData[P]; Inc(P);
+      if N=128 then Continue;
+      if N<128 then Count := N+1 else Count := 257-N;
+      if Count>Width-X then raise EArtFormat.Create('PackBits row overflow');
+      OutPos := Y*Width+X;
+      if N<128 then begin
+        if Count>RowEnd-P then raise EArtFormat.Create('PackBits literal truncated');
+        Move(R.FData[P],Result[OutPos],Count); Inc(P,Count);
+      end else begin
+        if P>=RowEnd then raise EArtFormat.Create('PackBits repeat truncated');
+        FillChar(Result[OutPos],Count,R.FData[P]); Inc(P);
+      end;
+      Inc(X,Count);
+    end;
+    if X<>Width then raise EArtFormat.Create('PackBits row underflow');
+  end;
+end;
+
+function DecodePlane(R: TReader; Width, Height: Integer): TBytes;
+var Compression: Word; Sizes: TArray<Word>; Y,ByteCount: Integer;
+begin
+  ByteCount := PixelByteCount(Width,Height,1);
   Compression := R.U16;
   case Compression of
-    0: Result := R.Bytes(Length(Result));
+    0: Result := R.Bytes(ByteCount);
     1: begin
+      if Int64(Height)*2>R.Limit-R.Position then
+        raise EArtFormat.Create('PackBits row table truncated');
       SetLength(Sizes, Height);
       for Y := 0 to Height-1 do Sizes[Y] := R.U16;
-      for Y := 0 to Height-1 do begin
-        Row := R.Block(Sizes[Y]); X := 0;
-        try
-          while Row.Position < Row.Limit do begin
-            N := Row.U8;
-            if N = 128 then Continue;
-            if N < 128 then Count := N+1 else Count := 257-N;
-            if X + Count > Width then raise EArtFormat.Create('PackBits row overflow');
-            P := Y * Width + X;
-            if N < 128 then
-              for I := 0 to Count-1 do Result[P+I] := Row.U8
-            else begin
-              Value := Row.U8;
-              for I := 0 to Count-1 do Result[P+I] := Value;
-            end;
-            Inc(X, Count);
-          end;
-          if X <> Width then raise EArtFormat.Create('PackBits row underflow');
-        finally Row.Free; end;
-      end;
+      Result := DecodeRleRows(R,Width,Height,Sizes,0);
     end;
   else raise EArtFormat.CreateFmt('Unsupported PSD compression %d', [Compression]); end;
   if R.Position <> R.Limit then raise EArtFormat.Create('Channel length mismatch');
@@ -314,48 +344,56 @@ begin
 end;
 
 procedure ReadMerged(R: TReader; D: TArtDocument; Channels: Integer);
-var Compression: Word; C, Y, I, DataStart, EncodedSize: Integer;
-    Sizes: TArray<Word>; B: TReader; Synthetic: TWriter; Data: TBytes;
+var Compression: Word; C,I: Integer; Sizes: TArray<Word>;
 begin
   Compression := R.U16;
   SetLength(D.MergedPlanes, Channels);
   case Compression of
     0: for C := 0 to Channels-1 do D.MergedPlanes[C] := R.Bytes(PixelByteCount(D.Width,D.Height,1));
     1: begin
+      if Int64(D.Height)*Channels*2>R.Limit-R.Position then
+        raise EArtFormat.Create('Merged PackBits row table truncated');
       SetLength(Sizes, D.Height * Channels);
       for I := 0 to High(Sizes) do Sizes[I] := R.U16;
-      for C := 0 to Channels-1 do begin
-        EncodedSize := 0;
-        for Y := 0 to D.Height-1 do Inc(EncodedSize, Sizes[C*D.Height+Y]);
-        DataStart := R.Position; B := R.Block(EncodedSize);
-        Synthetic := TWriter.Create;
-        try
-          Synthetic.U16(1);
-          for Y := 0 to D.Height-1 do Synthetic.U16(Sizes[C*D.Height+Y]);
-          Data := B.Bytes(EncodedSize); Synthetic.Bytes(Data);
-          SetLength(Data, Synthetic.Size); Move(Synthetic.Memory^, Data[0], Length(Data));
-          FreeAndNil(B); B := TReader.Create(Data,0,Length(Data));
-          D.MergedPlanes[C] := DecodePlane(B,D.Width,D.Height);
-        finally B.Free; Synthetic.Free; end;
-        if R.Position <> DataStart + EncodedSize then raise EArtFormat.Create('Merged channel positioning failed');
-      end;
+      for C := 0 to Channels-1 do
+        D.MergedPlanes[C] := DecodeRleRows(R,D.Width,D.Height,Sizes,C*D.Height);
     end;
   else raise EArtFormat.Create('Merged image compression not implemented'); end;
   if R.Position <> R.Limit then Unsupported(D, 'Unexplained PSD trailing data retained in archive');
 end;
 
 function ReadPsd(const FileName: string): TArtDocument;
-var D: TArtDocument; R, B, Info, CReader: TReader;
-    FS: TFileStream; Data, Plane: TBytes;
-    Channels, I, J, P, ColorIndex, Count, SignedCount: Integer;
-    ChannelLists: TArray<TChannels>; Records: TArray<TArtLayer>;
-    L: TArtLayer; V: Cardinal; Budget: Int64;
+var FS: TFileStream; Data: TBytes;
 begin
   FS := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
   try
     if (FS.Size < 26) or (FS.Size > ART_MAX_BYTES) then raise EArtFormat.Create('PSD file size limit');
     SetLength(Data, FS.Size); FS.ReadBuffer(Data[0], Length(Data));
   finally FS.Free; end;
+  Result := ReadPsdBytes(Data);
+end;
+
+procedure CopyPlaneToRgba(const Plane: TBytes; var Pixels: TBytes; Channel: Integer);
+var Source,Target: PByte; I: Integer;
+begin
+  if (Channel<0) or (Channel>3) or (Length(Pixels)<>Int64(Length(Plane))*4) then
+    raise EArtFormat.Create('RGBA channel size mismatch');
+  if Length(Plane)=0 then Exit;
+  Source := @Plane[0]; Target := @Pixels[Channel];
+  // Both spans are checked once, instead of checking array indices per pixel.
+  for I := 0 to Length(Plane)-1 do begin
+    Target^ := Source^; Inc(Source); Inc(Target,4);
+  end;
+end;
+
+function ReadPsdBytes(const Data: TBytes): TArtDocument;
+var D: TArtDocument; R,B,Info,CReader: TReader; Plane: TBytes;
+    Channels,I,J,P,ColorIndex,Count,SignedCount: Integer;
+    ChannelLists: TArray<TChannels>; Records: TArray<TArtLayer>;
+    L: TArtLayer; V: Cardinal; Budget: Int64; Alpha: PByte;
+begin
+  if (Length(Data)<26) or (Length(Data)>ART_MAX_BYTES) then
+    raise EArtFormat.Create('PSD file size limit');
   D := TArtDocument.Create;
   R := TReader.Create(Data,0,Length(Data));
   try
@@ -393,7 +431,10 @@ begin
                   Inc(Budget, PixelByteCount(L.Bounds.Width,L.Bounds.Height,4));
                   if Budget > ART_MAX_BYTES then raise EArtFormat.Create('Document image budget exceeded');
                   SetLength(L.Pixels,PixelByteCount(L.Bounds.Width,L.Bounds.Height,4));
-                  for P := 0 to Length(L.Pixels) div 4-1 do L.Pixels[P*4+3] := 255;
+                  if Length(L.Pixels)>0 then begin
+                    Alpha := @L.Pixels[3];
+                    for P := 0 to Length(L.Pixels) div 4-1 do begin Alpha^ := 255; Inc(Alpha,4); end;
+                  end;
                 end;
                 for J := 0 to High(ChannelLists[I]) do begin
                   CReader := Info.Block(ChannelLists[I][J].Size);
@@ -407,7 +448,7 @@ begin
                       L.MaskPixels := DecodePlane(CReader,L.MaskBounds.Width,L.MaskBounds.Height);
                     end else if (L.Kind = alkImage) and (ColorIndex >= 0) and (ColorIndex <= 3) then begin
                       Plane := DecodePlane(CReader,L.Bounds.Width,L.Bounds.Height);
-                      for P := 0 to High(Plane) do L.Pixels[P*4+ColorIndex] := Plane[P];
+                      CopyPlaneToRgba(Plane,L.Pixels,ColorIndex);
                     end else if ChannelLists[I][J].Id < -1 then Unsupported(D,'Mask channel retained without rendering')
                     else if ChannelLists[I][J].Id > 2 then Unsupported(D,'Additional layer channel retained');
                   finally CReader.Free; end;
@@ -439,8 +480,21 @@ begin
   finally R.Free; end;
 end;
 
+procedure CheckPsdRenderSupport(Document: TArtDocument);
+var Reason: string;
+begin
+  for Reason in Document.Unsupported do
+    if (Reason<>'Image resources retained in source archive') and
+       (Reason<>'Additional info retained in archive: lspf') and
+       (Reason<>'Additional info retained in archive: lclr') and
+       (Reason<>'Additional info retained in archive: lyvr') and
+       (Reason<>'Global mask retained') and
+       (Reason<>'Additional info retained in archive: Patt') and
+       (Reason<>'Additional info retained in archive: FMsk') then raise EArtFormat.Create(Reason);
+end;
+
 function RenderPsdLayers(Document: TArtDocument): TBytes;
-var Snapshot: TArtDocument; Reason: string;
+var Snapshot: TArtDocument;
   procedure CopyLayers(List: TList<TArtLayer>; Parent: TArtLayer);
   var L,N: TArtLayer;
   begin
@@ -454,14 +508,7 @@ var Snapshot: TArtDocument; Reason: string;
     end;
   end;
 begin
-  for Reason in Document.Unsupported do
-    if (Reason<>'Image resources retained in source archive') and
-       (Reason<>'Additional info retained in archive: lspf') and
-       (Reason<>'Additional info retained in archive: lclr') and
-       (Reason<>'Additional info retained in archive: lyvr') and
-       (Reason<>'Global mask retained') and
-       (Reason<>'Additional info retained in archive: Patt') and
-       (Reason<>'Additional info retained in archive: FMsk') then raise EArtFormat.Create(Reason);
+  CheckPsdRenderSupport(Document);
   Snapshot := TArtDocument.Create;
   try
     Snapshot.Width := Document.Width; Snapshot.Height := Document.Height;
@@ -489,45 +536,63 @@ end;
 
 function EncodePlane(const Pixels: TBytes; Width, Height, Channel: Integer;
   Compression: TPsdCompression; Stride: Integer = 4): TBytes;
-var W, Rows: TWriter; Sizes: TArray<Word>; Y, X, I, Run, Start, N: Integer;
-    function Value(Col: Integer): Byte;
-    begin Result := Pixels[(Y*Width+Col)*Stride+Channel]; end;
+var Rows: TWriter; Row,Encoded,Header: TBytes;
+    Y,X,I,Run,N,Used,Offset,ByteCount: Integer;
 begin
-  W := TWriter.Create; Rows := TWriter.Create;
+  ByteCount := PixelByteCount(Width,Height,1);
+  if (Stride<1) or (Channel<0) or (Channel>=Stride) or
+     (Length(Pixels)<>PixelByteCount(Width,Height,Stride)) then
+    raise EArtFormat.Create('Invalid channel pixel buffer');
+  if Compression=pcRaw then begin
+    SetLength(Result,2+ByteCount); Result[0] := 0; Result[1] := 0;
+    if Stride=1 then begin
+      if ByteCount>0 then Move(Pixels[0],Result[2],ByteCount);
+    end else
+      for I := 0 to ByteCount-1 do Result[2+I] := Pixels[I*Stride+Channel];
+    Exit;
+  end;
+  if Int64(Height)*2+2>ART_MAX_BYTES then raise EArtFormat.Create('RLE row table too large');
+  SetLength(Header,2+Height*2); Header[0] := 0; Header[1] := 1;
+  if Height>0 then begin
+    SetLength(Row,Width); SetLength(Encoded,Width*2+2);
+  end;
+  Rows := TWriter.Create;
   try
-    W.U16(Ord(Compression));
-    if Compression = pcRaw then begin
-      for I := 0 to Width*Height-1 do W.U8(Pixels[I*Stride+Channel]);
-    end else begin
-      SetLength(Sizes,Height);
-      for Y := 0 to Height-1 do begin
-        Start := Rows.Position; X := 0;
-        while X < Width do begin
-          Run := 1;
-          while (Run < 128) and (X+Run < Width) and (Value(X)=Value(X+Run)) do Inc(Run);
-          if Run >= 3 then begin
-            Rows.U8(257-Run); Rows.U8(Value(X)); Inc(X,Run);
-          end else begin
-            I := X; Inc(X,Run);
-            while (X < Width) and (X-I < 128) do begin
-              Run := 1;
-              while (Run < 3) and (X+Run < Width) and (Value(X)=Value(X+Run)) do Inc(Run);
-              if Run >= 3 then Break;
-              Inc(X);
-            end;
-            N := X-I; Rows.U8(N-1);
-            while I < X do begin Rows.U8(Value(I)); Inc(I); end;
+    for Y := 0 to Height-1 do begin
+      // Extract once, then encode contiguous runs and copy literal spans in bulk.
+      Offset := Y*Width*Stride+Channel;
+      if Stride=1 then begin
+        if Width>0 then Move(Pixels[Offset],Row[0],Width);
+      end else
+        for X := 0 to Width-1 do Row[X] := Pixels[Offset+X*Stride];
+      Used := 0; X := 0;
+      while X<Width do begin
+        Run := 1;
+        while (Run<128) and (X+Run<Width) and (Row[X]=Row[X+Run]) do Inc(Run);
+        if Run>=3 then begin
+          Encoded[Used] := Byte(257-Run); Encoded[Used+1] := Row[X];
+          Inc(Used,2); Inc(X,Run);
+        end else begin
+          I := X; Inc(X,Run);
+          while (X<Width) and (X-I<128) do begin
+            Run := 1;
+            while (Run<3) and (X+Run<Width) and (Row[X]=Row[X+Run]) do Inc(Run);
+            if Run>=3 then Break;
+            Inc(X);
           end;
+          N := X-I; Encoded[Used] := Byte(N-1); Inc(Used);
+          Move(Row[I],Encoded[Used],N); Inc(Used,N);
         end;
-        if Rows.Position-Start > High(Word) then raise EArtFormat.Create('RLE row too long');
-        Sizes[Y] := Word(Rows.Position-Start);
       end;
-      for Y := 0 to Height-1 do W.U16(Sizes[Y]);
-      if Rows.Size > 0 then W.WriteBuffer(Rows.Memory^,Rows.Size);
+      if Used>High(Word) then raise EArtFormat.Create('RLE row too long');
+      Header[2+Y*2] := Byte(Used shr 8); Header[3+Y*2] := Byte(Used and $FF);
+      if Used>0 then Rows.WriteBuffer(Encoded[0],Used);
     end;
-    SetLength(Result,W.Size);
-    if W.Size > 0 then Move(W.Memory^,Result[0],W.Size);
-  finally W.Free; Rows.Free; end;
+    if Rows.Size+Length(Header)>ART_MAX_BYTES then raise EArtFormat.Create('RLE channel too large');
+    SetLength(Result,Length(Header)+Rows.Size);
+    Move(Header[0],Result[0],Length(Header));
+    if Rows.Size>0 then Move(Rows.Memory^,Result[Length(Header)],Rows.Size);
+  finally Rows.Free; end;
 end;
 
 procedure WriteMaskBlock(W: TWriter; L: TArtLayer; Divider: Boolean);
@@ -822,7 +887,7 @@ var Old,Editable,ParsedOld,ParsedNew,Checked: TArtDocument;
     DividerMap: TDictionary<Integer,Integer>; Stack: TList<Integer>; Seen: TDictionary<Integer,Boolean>;
     Info,LayerMask,Output,Data: TWriter;
     I,Index,Offset: Integer; MaxId: Cardinal; L: TArtLayer;
-    SourceTemp,GeneratedTemp,TempName,Destination: string; G: TGUID;
+    GeneratedTemp,TempName,Destination: string; G: TGUID;
   procedure CopyTree(List: TList<TArtLayer>; Parent: TArtLayer; Depth: Integer);
   var L,N: TArtLayer;
   begin
@@ -886,16 +951,16 @@ var Old,Editable,ParsedOld,ParsedNew,Checked: TArtDocument;
   end;
 begin
   if Length(Document.SourceBytes)=0 then begin WriteNewPsd(Document,FileName,pcRle); Exit; end;
-  RenderPsdLayers(Document); // Reject unsupported rendering without discarding source data.
+  CheckPsdRenderSupport(Document);
   Destination := TPath.GetFullPath(FileName); CreateGUID(G);
-  TempName := Destination+'.'+GUIDToString(G)+'.tmp'; SourceTemp := TempName+'.source'; GeneratedTemp := TempName+'.generated';
+  TempName := Destination+'.'+GUIDToString(G)+'.tmp'; GeneratedTemp := TempName+'.generated';
   Old := nil; Editable := nil; ParsedOld := nil; ParsedNew := nil;
   Layers := TList<TArtLayer>.Create; Dividers := TList<Boolean>.Create; Stack := TList<Integer>.Create;
   DividerMap := TDictionary<Integer,Integer>.Create; Seen := TDictionary<Integer,Boolean>.Create;
   Info := TWriter.Create; LayerMask := TWriter.Create; Output := TWriter.Create; Data := TWriter.Create;
   try
-    TFile.WriteAllBytes(SourceTemp,Document.SourceBytes); Old := ReadPsd(SourceTemp);
-    RenderPsdLayers(Old);
+    Old := ReadPsdBytes(Document.SourceBytes);
+    CheckPsdRenderSupport(Old);
     if (Old.Unsupported.Text<>Document.Unsupported.Text) or (Old.SourceRecordCount<>Document.SourceRecordCount) then raise EArtFormat.Create('Source metadata changed');
     if (Old.Width<>Document.Width) or (Old.Height<>Document.Height) then raise EArtFormat.Create('Canvas change is not supported in imported composition');
     ParsedOld := TArtDocument.Create;
@@ -918,6 +983,7 @@ begin
       finally R.Free; end;
     end;
     Editable := TArtDocument.Create; Editable.Width := Document.Width; Editable.Height := Document.Height;
+    // WriteNewPsd validates the full editable tree and renders its composite once.
     CopyTree(Document.Roots,nil,0); WriteNewPsd(Editable,GeneratedTemp,pcRle);
     Generated := TFile.ReadAllBytes(GeneratedTemp); ParsedNew := TArtDocument.Create;
     SplitArchive(Generated,NP,NT,NC,NM,GeneratedRecords,ParsedNew); NewData := ChannelSlices(GeneratedRecords,NC);
@@ -958,7 +1024,7 @@ begin
     LayerMask.Block(Info); LayerMask.Bytes(Tail);
     Prefix[12] := 0; Prefix[13] := 4;
     Output.Bytes(Prefix); Output.Block(LayerMask); Output.Bytes(NM); Output.SaveToFile(TempName);
-    ParsedNew.Free; ParsedNew := ReadPsd(GeneratedTemp);
+    ParsedNew.Free; ParsedNew := ReadPsdBytes(Generated);
     Checked := ReadPsd(TempName);
     try Verify(Document.Roots,Checked.Roots);
       for I := 0 to High(Checked.MergedPlanes) do
@@ -969,7 +1035,7 @@ begin
     TempName := '';
   finally
     if (TempName<>'') and TFile.Exists(TempName) then TFile.Delete(TempName);
-    if TFile.Exists(SourceTemp) then TFile.Delete(SourceTemp); if TFile.Exists(GeneratedTemp) then TFile.Delete(GeneratedTemp);
+    if TFile.Exists(GeneratedTemp) then TFile.Delete(GeneratedTemp);
     Data.Free; Output.Free; LayerMask.Free; Info.Free; Seen.Free; DividerMap.Free; Stack.Free; Dividers.Free; Layers.Free;
     ParsedNew.Free; ParsedOld.Free; Editable.Free; Old.Free;
   end;
@@ -983,7 +1049,7 @@ var Original, Parsed, Checked, ParsedChecked: TArtDocument;
       CheckChannels, CheckMerged: TBytes;
     Info, LayerMask, Output: TWriter; Planes: TArray<TBytes>;
     I,C,Y,P,A,Offset: Integer; L: TArtLayer;
-    Destination,TempName,SourceTemp,Reason: string; G: TGUID;
+    Destination,TempName,Reason: string; G: TGUID;
     AppearanceChanged,AnyChanged: Boolean;
   function SameBytes(const A,B: TBytes): Boolean;
   begin
@@ -1024,13 +1090,13 @@ begin
   if (Document=nil) or (Length(Document.SourceBytes)=0) then
     raise EArtFormat.Create('No original PSD archive');
   Destination := TPath.GetFullPath(FileName); CreateGUID(G);
-  TempName := Destination+'.'+GUIDToString(G)+'.tmp'; SourceTemp := TempName+'.source';
+  TempName := Destination+'.'+GUIDToString(G)+'.tmp';
   Original := nil; Parsed := nil; ParsedChecked := nil;
   Map := TDictionary<Integer,TArtLayer>.Create;
   Info := TWriter.Create; LayerMask := TWriter.Create; Output := TWriter.Create;
   AppearanceChanged := False; AnyChanged := False;
   try
-    TFile.WriteAllBytes(SourceTemp,Document.SourceBytes); Original := ReadPsd(SourceTemp);
+    Original := ReadPsdBytes(Document.SourceBytes);
     if (Document.Width<>Original.Width) or (Document.Height<>Original.Height) or
        (Document.SourceRecordCount<>Original.SourceRecordCount) or
        (Document.Unsupported.Text<>Original.Unsupported.Text) or
@@ -1123,7 +1189,6 @@ begin
     TempName := '';
   finally
     if (TempName<>'') and TFile.Exists(TempName) then TFile.Delete(TempName);
-    if TFile.Exists(SourceTemp) then TFile.Delete(SourceTemp);
     Output.Free; LayerMask.Free; Info.Free; Map.Free;
     ParsedChecked.Free; Parsed.Free; Original.Free;
   end;
@@ -1173,7 +1238,7 @@ var Original, Editable, ParsedOld, ParsedNew, Checked: TArtDocument;
     Prefix, Tail, Channels, Merged, Generated: TBytes;
     NewPrefix, NewTail, NewChannels, NewMerged, Extra: TBytes;
     Info, LayerMask, Output: TWriter;
-    SourceTemp, GeneratedTemp, TempName, Destination: string; G: TGUID;
+    GeneratedTemp, TempName, Destination: string; G: TGUID;
     Map: TDictionary<Integer,TArtLayer>; I,J,FlagIndex: Integer; R,B: TReader; V: Cardinal;
   function SameBytes(const A,C: TBytes): Boolean;
   begin
@@ -1218,12 +1283,12 @@ begin
   if Length(Document.SourceBytes)=0 then raise EArtFormat.Create('No source archive');
   Destination := TPath.GetFullPath(FileName); CreateGUID(G);
   TempName := Destination+'.'+GUIDToString(G)+'.tmp';
-  SourceTemp := TempName+'.source'; GeneratedTemp := TempName+'.generated';
+  GeneratedTemp := TempName+'.generated';
   Original := nil; Editable := nil; ParsedOld := nil; ParsedNew := nil;
   Map := TDictionary<Integer,TArtLayer>.Create;
   Info := TWriter.Create; LayerMask := TWriter.Create; Output := TWriter.Create;
   try
-    TFile.WriteAllBytes(SourceTemp,Document.SourceBytes); Original := ReadPsd(SourceTemp);
+    Original := ReadPsdBytes(Document.SourceBytes);
     for I := 0 to Original.Unsupported.Count-1 do
       if Original.Unsupported[I]<>'Image resources retained in source archive' then
         raise EArtFormat.Create('Edited save blocked: '+Original.Unsupported[I]);
@@ -1316,7 +1381,6 @@ begin
     Original.Free; Editable.Free; ParsedOld.Free; ParsedNew.Free; Map.Free;
     Info.Free; LayerMask.Free; Output.Free;
     if (TempName<>'') and TFile.Exists(TempName) then TFile.Delete(TempName);
-    if TFile.Exists(SourceTemp) then TFile.Delete(SourceTemp);
     if TFile.Exists(GeneratedTemp) then TFile.Delete(GeneratedTemp);
   end;
 end;

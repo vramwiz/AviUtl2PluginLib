@@ -40,6 +40,22 @@ function OriginUnprotect(var Input: TOriginBlob; Description, Entropy, Reserved,
   stdcall; external 'crypt32.dll' name 'CryptUnprotectData';
 function OriginRandom(Algorithm: THandle; Buffer: PByte; Size, Flags: ULONG): LongInt;
   stdcall; external 'bcrypt.dll' name 'BCryptGenRandom';
+function OriginOpenHashProvider(out Algorithm: THandle; Id, Provider: PWideChar;
+  Flags: ULONG): LongInt; stdcall; external 'bcrypt.dll' name 'BCryptOpenAlgorithmProvider';
+function OriginHashProperty(Algorithm: THandle; Name: PWideChar; Data: PByte;
+  Size: ULONG; out Written: ULONG; Flags: ULONG): LongInt;
+  stdcall; external 'bcrypt.dll' name 'BCryptGetProperty';
+function OriginCreateHash(Algorithm: THandle; out Hash: THandle; Buffer: PByte;
+  BufferSize: ULONG; Secret: PByte; SecretSize, Flags: ULONG): LongInt;
+  stdcall; external 'bcrypt.dll' name 'BCryptCreateHash';
+function OriginHashData(Hash: THandle; Data: PByte; Size, Flags: ULONG): LongInt;
+  stdcall; external 'bcrypt.dll' name 'BCryptHashData';
+function OriginFinishHash(Hash: THandle; Data: PByte; Size, Flags: ULONG): LongInt;
+  stdcall; external 'bcrypt.dll' name 'BCryptFinishHash';
+function OriginDestroyHash(Hash: THandle): LongInt;
+  stdcall; external 'bcrypt.dll' name 'BCryptDestroyHash';
+function OriginCloseHashProvider(Algorithm: THandle; Flags: ULONG): LongInt;
+  stdcall; external 'bcrypt.dll' name 'BCryptCloseAlgorithmProvider';
 
 procedure ClearBytes(var Value: TBytes);
 begin
@@ -169,15 +185,39 @@ begin
 end;
 
 function OriginMac(const Data, Key: TBytes; PayloadStart: Integer): TBytes;
-var Hash: THashSHA2; Digest: TBytes; Zeros: array[0..31] of Byte; Offset: Integer;
+var Algorithm,Hash: THandle; ObjectBuffer,Digest: TBytes;
+    ObjectSize,DigestSize,Written: ULONG; Zeros: array[0..31] of Byte; Offset: Integer;
+  procedure Check(Status: LongInt);
+  begin
+    if Status<0 then raise EArtFormat.CreateFmt('PSD SHA-256 failed (%.8x)',[Cardinal(Status)]);
+  end;
 begin
   Offset := PayloadStart+ORIGIN_MAC_OFFSET; CheckRange(Data,Offset,32);
   // Bind every byte, including UUID and resource layout, with the MAC field zeroed.
-  Hash := THashSHA2.Create; FillChar(Zeros,SizeOf(Zeros),0);
-  Hash.Update(Data[0],Offset); Hash.Update(Zeros,SizeOf(Zeros));
-  if Offset+32<Length(Data) then Hash.Update(Data[Offset+32],Length(Data)-Offset-32);
-  Digest := Hash.HashAsBytes;
-  Result := THashSHA2.GetHMACAsBytes(Digest,Key);
+  // CNG computes the same SHA-256 digest without Delphi's per-block overhead.
+  // Handles are local to this call, so concurrent verification shares no hash state.
+  Algorithm := 0; Hash := 0; FillChar(Zeros,SizeOf(Zeros),0);
+  try
+    Check(OriginOpenHashProvider(Algorithm,'SHA256',nil,0));
+    Check(OriginHashProperty(Algorithm,'ObjectLength',@ObjectSize,SizeOf(ObjectSize),Written,0));
+    if (Written<>SizeOf(ObjectSize)) or (ObjectSize=0) or (ObjectSize>65536) then
+      raise EArtFormat.Create('Invalid SHA-256 object size');
+    Check(OriginHashProperty(Algorithm,'HashDigestLength',@DigestSize,SizeOf(DigestSize),Written,0));
+    if (Written<>SizeOf(DigestSize)) or (DigestSize<>32) then
+      raise EArtFormat.Create('Invalid SHA-256 digest size');
+    SetLength(ObjectBuffer,ObjectSize); SetLength(Digest,DigestSize);
+    Check(OriginCreateHash(Algorithm,Hash,@ObjectBuffer[0],ObjectSize,nil,0,0));
+    if Offset>0 then Check(OriginHashData(Hash,@Data[0],Offset,0));
+    Check(OriginHashData(Hash,@Zeros[0],SizeOf(Zeros),0));
+    if Offset+32<Length(Data) then
+      Check(OriginHashData(Hash,@Data[Offset+32],Length(Data)-Offset-32,0));
+    Check(OriginFinishHash(Hash,@Digest[0],DigestSize,0));
+    Result := THashSHA2.GetHMACAsBytes(Digest,Key);
+  finally
+    if Hash<>0 then OriginDestroyHash(Hash);
+    if Algorithm<>0 then OriginCloseHashProvider(Algorithm,0);
+    ClearBytes(ObjectBuffer); ClearBytes(Digest);
+  end;
 end;
 
 function NewArtPsdOrigin: string;
