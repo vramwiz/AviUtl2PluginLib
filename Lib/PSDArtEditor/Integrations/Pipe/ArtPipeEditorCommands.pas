@@ -15,12 +15,12 @@ function TryEditorPipeCommand(Editor: TPsdArtEditorForm; const Command: string;
 
 implementation
 
-uses System.SysUtils, System.Generics.Collections, ArtDocument, ArtPipeProtocol;
+uses System.SysUtils, System.Generics.Collections, ArtDocument, ArtPipeProtocol, ArtPipeInstruments;
 
 function EditorPipeCommands: TJSONArray;
 begin
   Result := TJSONArray.Create;
-  for var Command in ['status', 'document', 'update-layer', 'save', 'rename-file',
+  for var Command in ['status', 'document', 'instruments', 'update-layer', 'save', 'rename-file',
     'new-from-png', 'import-png', 'replace-png', 'move-layer', 'reorder-layer', 'swap-layers',
     'delete-layer', 'create-group', 'select-part',
     'export', 'import', 'progress', 'cancel', 'recover', 'undo', 'redo'] do Result.Add(Command);
@@ -100,13 +100,14 @@ var Layer, Parent, Other: TArtLayer; Version: UInt64; Name, Path, PreviousId: st
   end;
 begin
   Data := nil;
-  Result := (Command = 'document') or (Command = 'update-layer') or (Command = 'save') or
+  Result := (Command = 'document') or (Command = 'instruments') or (Command = 'update-layer') or (Command = 'save') or
     (Command = 'rename-file') or (Command = 'new-from-png') or (Command = 'import-png') or
     (Command = 'replace-png') or (Command = 'move-layer') or (Command = 'reorder-layer') or
     (Command = 'swap-layers') or (Command = 'delete-layer') or (Command = 'create-group') or
     (Command = 'select-part');
   if not Result then Exit;
   if Command = 'document' then begin Data := EditorDocumentJson(Editor); Exit; end;
+  if Command = 'instruments' then begin Data := InstrumentDocumentJson(Editor.Document); Exit; end;
   Editor.LayerList.FinishRename(True);
   if Editor.Document = nil then raise EArtFormat.Create('No PSD is open');
   if CommandString(Args, 'documentId') <> Editor.Document.SessionId then

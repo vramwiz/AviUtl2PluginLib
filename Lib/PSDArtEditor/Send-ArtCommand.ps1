@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$PipeName,
     [Parameter(Mandatory = $true)]
-    [ValidateSet('status', 'document', 'update-layer', 'save', 'rename-file',
+    [ValidateSet('status', 'document', 'instruments', 'update-layer', 'save', 'rename-file',
         'new-from-png', 'import-png', 'replace-png', 'move-layer', 'reorder-layer', 'swap-layers', 'delete-layer', 'create-group', 'select-part',
         'export', 'import', 'progress', 'cancel', 'undo', 'redo', 'recover')]
     [string]$Command,
