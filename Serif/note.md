@@ -32,8 +32,13 @@
 ## VOICEVOX Engineと保存値
 
 - Engineの場所は`Documents\Syncroh2\Serif\VoicevoxEngine.ini`へ全体共通で保存する。
-- 保存値がなければVOICEVOX標準インストール先から`vv-engine\run.exe`を自動検出する。既に
+- 保存値がなければ`%APPDATA%\voicevox\vvpp-engines`から公式UUIDのダウンロード済みEngineを探し、
+  なければVOICEVOX標準インストール先から`vv-engine\run.exe`を自動検出する。`VOICEVOX.exe`の手動指定でも、
+  同梱Engineがない場合はダウンロード済みEngineを使う。別Engineやダウンロード途中の`.tmp`は対象外。既に
   `127.0.0.1:50021`でAPIが応答する場合は既存Engineを利用する。
+- VOICEVOX本体の事前起動は不要。エンジンを別途ダウンロードする版では、初回のみ本体でダウンロードを完了させる。
+- 0.26系の`streaming_talk`も読み上げ用styleとして取り込む。旧`talk`とtype未指定は引き続き取り込み、歌唱用は除外する。
+  話者取得失敗では途中のカタログを破棄し、エラー表示後に場所指定へ戻る。2026-10-30の修正はソース確認までで、ビルド・実機確認は未実施。
 - 入力ページ描画後、50msの遅延を置いてAPI準備を開始する。画面が起動したEngineだけを終了時に停止する。
 - キャラ＋感情別の速度、音高、抑揚、音量、前間、後間は、セリフプロジェクト内の
   `VoicevoxSettings.ini`へ`speaker_uuid + style ID`単位で保存する。規定値へ戻した項目は削除する。
@@ -41,7 +46,7 @@
 
 ## VOICEVOXの生成・送信経路
 
-1. `/speakers`から話者とtalk用styleを取得する。
+1. `/speakers`から話者と`talk`／`streaming_talk`用styleを取得する。
 2. 本文とstyle IDから`/audio_query`を取得する。
 3. アクセント変更後は`/mora_data`で音素情報を再計算し、手動pitch・長さを再適用する。
 4. キャラ＋感情別の音声設定を反映し、内部メタデータを除去して`/synthesis`へ送る。

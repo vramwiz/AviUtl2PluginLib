@@ -192,7 +192,9 @@ begin
                 if not (StyleArray.Items[J] is TJSONObject) then Continue;
                 StyleObject := TJSONObject(StyleArray.Items[J]);
                 StyleType := JsonString(StyleObject, 'type');
-                if (StyleType <> '') and not SameText(StyleType, 'talk') then
+                // streaming_talkも従来のaudio_queryとsynthesisに対応する。
+                if (StyleType <> '') and not SameText(StyleType, 'talk') and
+                  not SameText(StyleType, 'streaming_talk') then
                   Continue;
                 Style := TSerifVoicevoxStyle.Create;
                 Style.Name := JsonString(StyleObject, 'name');
@@ -215,11 +217,13 @@ begin
         JsonRoot.Free;
       end;
       if FSpeakers.Count = 0 then
-        raise Exception.Create('talk speaker is not available');
+        raise Exception.Create('VOICEVOX Engineから読み上げ用の話者を取得できませんでした。' +
+          'VOICEVOX本体で読み上げができることを確認してください。');
       Result := True;
     except
       on E: Exception do
       begin
+        FSpeakers.Clear;
         ErrorMessage := E.Message;
         VoicevoxDebugLog('SpeakerCatalog.LoadFromApi error=' + E.ClassName +
           ': ' + E.Message);

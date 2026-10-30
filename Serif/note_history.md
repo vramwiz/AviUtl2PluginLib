@@ -928,3 +928,13 @@
   `ふわふわ`は`中 値1`を上下振幅px、`中 速さ`を1秒あたりの往復回数として使用する。
 - 表示中の変換をセリフ開始から継続評価し、その結果へ表示前または表示後の透明度を合成する。
   セリフ終了時は表示内容を保持して表示後へ入り、別セリフが来た場合は直ちに打ち切って新しい表示前へ入る。
+
+## 2026-10-30 VOICEVOX 0.26.1の直接入力互換修正
+
+- ユーザーから、VOICEVOX 0.26.1で監視は使えるが、起動済みの直接入力で「not available」、未起動でVOICEVOX.exeを指定するとEngineが見つからないという報告を受けた。
+- 公式Engine 0.26.0のmetas.pyとmetas_store.pyでは、streaming_talkも従来のaudio_query／synthesisを利用できる読み上げ用styleと定義されている。SpeakerCatalogがtalk以外を除外していた条件を修正し、旧talk・type未指定を維持して歌唱用は引き続き除外した。話者0件時の英語エラーを日本語の確認案内へ変更した。
+- 公式エディター0.26.1の通常版はEngineを別途ダウンロードし、ユーザーデータのvoicevox/vvpp-engines/<名前>+<UUID>へ配置する。EngineConfigは公式UUIDのフォルダ末尾とengine_manifest.jsonのUUID、run.exeの実在を確認して検出する。VOICEVOX.exeの手動指定でも同梱Engineがなければこの保存先を使う。保存済みの実在パスと旧vv-engine/run.exe指定は維持する。
+- 未取得・破損manifest・別UUID・ダウンロード途中の.tmpは自動起動候補にしない。manifestの任意commandは実行せず、従来と同じrun.exeだけを使用する。
+- 初回の本体設定・必要なダウンロードと、毎回の本体事前起動が不要であることを場所指定の案内へ追記した。話者取得失敗では途中のカタログを破棄し、画面がエラー文だけで止まらず場所指定へ戻れるようにした。
+- 仕様参照: https://github.com/VOICEVOX/voicevox_engine/blob/0.26.0/voicevox_engine/metas/metas.py 、同metas_store.py、https://github.com/VOICEVOX/voicevox/blob/0.26.1/build/.env.download-vvpp 、src/backend/electron/main.ts、src/backend/electron/manager/vvppManager.ts。公式speakers応答のスナップショットにもtalkとstreaming_talkの両方があることを確認した。
+- ソースと既存呼び出し経路を確認した。ビルドはユーザー担当のため実行せず、実Engine／AviUtl2上の接続・生成・再生・送信の確認も未実施。検証ビルド・更新一式は作成していない。

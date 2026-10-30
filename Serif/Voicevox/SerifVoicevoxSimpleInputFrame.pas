@@ -50,12 +50,14 @@ type
     TEXT_WAIT = #$304A#$5F85#$3061#$304F#$3060#$3055#$3044;
     TEXT_SELECT_ENGINE = 'VOICEVOX' + #$306E#$5834#$6240#$3092 +
       #$6307#$5B9A;
-    TEXT_ENGINE_PROMPT = 'VOICEVOX' + #$3092#$4F7F#$3046#$306B#$306F +
-      #$5834#$6240#$306E#$6307#$5B9A#$304C#$5FC5#$8981#$3067#$3059 +
-      #$3002#$4ECA#$3059#$3050#$6307#$5B9A#$3057#$307E#$3059#$304B +
-      #$FF1F;
-    TEXT_ENGINE_NOT_FOUND = 'VOICEVOX Engine ' +
-      #$304C#$898B#$3064#$304B#$308A#$307E#$305B#$3093;
+    TEXT_ENGINE_PROMPT = 'VOICEVOXの場所を指定してください。' + #13#10 +
+      'エンジンをダウンロードする版は、VOICEVOX本体で初回ダウンロードを完了してください。' + #13#10 +
+      '以後はSyncroh2がエンジンを起動するため、本体の事前起動は不要です。' + #13#10#13#10 +
+      '今すぐVOICEVOX.exeを指定しますか？';
+    TEXT_ENGINE_NOT_FOUND = '指定した場所からVOICEVOX Engineを見つけられませんでした。' + #13#10 +
+      'VOICEVOX本体で初期設定と、必要な場合はエンジンのダウンロードを完了してから、' +
+      'もう一度VOICEVOX.exeを指定してください。' + #13#10 +
+      'エンジン同梱版では、vv-engineフォルダー内のrun.exeも指定できます。';
   private
     FButtonSelectEngine: TButton;
     FCharaIconRenderer: TSerifCharaIconRenderer;
@@ -121,7 +123,6 @@ type
     procedure ViewStyleClick(Sender: TObject);
     procedure ViewStyleWheel(Sender: TObject; const WheelDelta: Integer);
     procedure ViewTextChanged(Sender: TObject);
-    procedure ShowError(const ErrorMessage: string);
     procedure ShowEngineSetup;
     procedure ShowInput;
     procedure SetStatusText(const StatusText: string);
@@ -392,7 +393,7 @@ begin
   begin
     if not FSpeakerCatalog.LoadFromApi(ErrorMessage) then
     begin
-      ShowError(ErrorMessage);
+      EngineError(Self, ErrorMessage);
       Exit;
     end;
     FSpeakerMenu.Build;
@@ -530,19 +531,6 @@ procedure TFrameSerifVoicevoxSimpleInput.ShortcutApply(Sender: TObject;
   Style: TSerifVoicevoxStyle);
 begin
   SetCurrentSpeaker(Speaker, Style, False);
-end;
-
-procedure TFrameSerifVoicevoxSimpleInput.ShowError(
-  const ErrorMessage: string);
-begin
-  FReady := False;
-  FLabelWaiting.Caption := ErrorMessage;
-  FPanelInput.Visible := False;
-  FPanelEngineSetup.Visible := False;
-  FPanelWaiting.Visible := True;
-  FPanelWaiting.BringToFront;
-  if Assigned(FPanelCollapsed) and not FExpanded then
-    FPanelCollapsed.BringToFront;
 end;
 
 procedure TFrameSerifVoicevoxSimpleInput.ShowEngineSetup;
