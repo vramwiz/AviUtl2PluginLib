@@ -42,6 +42,7 @@ type
 
   TSerifVoicevoxAccentPaintControl = class(TCustomControl)
   private
+    FAllowPhraseEditing: Boolean;
     FDragging: Boolean;
     FDragPending: Boolean;
     FBoundaryPending: Integer;
@@ -89,6 +90,8 @@ type
     procedure SetQueryJson(const QueryJson: string);
     // 横スクロール範囲へ設定する、全モーラを描画可能な幅。
     property ContentWidth: Integer read GetContentWidth;
+    // 辞書のアクセント表示では、読み欄と競合する句分割・インライン読み編集を使わない。
+    property AllowPhraseEditing: Boolean read FAllowPhraseEditing write FAllowPhraseEditing;
     property OnAccentPosition: TSerifVoicevoxAccentPositionEvent
       read FOnAccentPosition write FOnAccentPosition;
     property OnBoundary: TSerifVoicevoxAccentBoundaryEvent
@@ -223,6 +226,7 @@ type
 constructor TSerifVoicevoxAccentPaintControl.Create(AOwner: TComponent);
 begin
   inherited;
+  FAllowPhraseEditing := True;
   TabStop := True;
   Color := A2SCPanelBackground;
   Cursor := crDefault;
@@ -268,6 +272,7 @@ var
   P1: TPoint;
   P2: TPoint;
 begin
+  if not FAllowPhraseEditing then Exit(-1);
   Result := -1;
   // 音高にかかわらず、モーラ描画領域内ではX座標だけで境界を判定する。
   if (Y < AccentScale(MORA_AREA_TOP, CurrentPPI)) or
@@ -327,6 +332,7 @@ procedure TSerifVoicevoxAccentPaintControl.BeginReadingEdit(
 var
   EditBounds: TRect;
 begin
+  if not FAllowPhraseEditing then Exit;
   if PhraseIndex < 0 then Exit;
   if FEditReading.Visible and (FEditingPhraseIndex = PhraseIndex) then Exit;
   if FEditReading.Visible then FinishReadingEdit(True);
@@ -564,7 +570,7 @@ var
 begin
   inherited;
   if (Button = mbLeft) and CanFocus then SetFocus;
-  if (Button = mbLeft) and (PhraseAtTextPoint(X, Y) >= 0) then
+  if FAllowPhraseEditing and (Button = mbLeft) and (PhraseAtTextPoint(X, Y) >= 0) then
   begin
     BeginReadingEdit(PhraseAtTextPoint(X, Y));
     Exit;
@@ -600,7 +606,7 @@ begin
     if FMoras[BoundaryIndex + 1].PhraseStart then Cursor := crHandPoint
     else Cursor := crCross;
   end
-  else if PhraseAtTextPoint(X, Y) >= 0 then Cursor := crIBeam
+  else if FAllowPhraseEditing and (PhraseAtTextPoint(X, Y) >= 0) then Cursor := crIBeam
   else if FDragging or (MoraAtPoint(X, Y) >= 0) then Cursor := crSizeNS
   else Cursor := crDefault;
   if FBoundaryPending >= 0 then Exit;

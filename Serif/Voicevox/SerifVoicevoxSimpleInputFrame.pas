@@ -67,6 +67,7 @@ type
     FEnginePromptHandled: Boolean;
     FExpanded: Boolean;
     FExpandedHeight: Integer;
+    FDictionaryExpandedHeight: Integer;
     FFrameSettings: TFrameSerifVoicevoxSettings;
     FFocusExitTimer: TTimer;
     FLabelWaiting: TLabel;
@@ -102,6 +103,8 @@ type
     procedure SettingsClose(Sender: TObject);
     procedure SettingsMoveEnd(Sender: TObject);
     procedure SettingsPreview(Sender: TObject);
+    procedure DictionaryChanged(Sender: TObject);
+    procedure SettingsPageChanged(Sender: TObject);
     procedure SettingsSend(Sender: TObject);
     procedure ShortcutApply(Sender: TObject; const Index: Integer;
       Speaker: TSerifVoicevoxSpeaker; Style: TSerifVoicevoxStyle);
@@ -179,6 +182,7 @@ begin
   Color := A2SCPanelBackground;
   Font.Color := A2SCPanelText;
   FExpandedHeight := EXPANDED_HEIGHT;
+  FDictionaryExpandedHeight := 560;
 
   FCharaIconRenderer := TSerifCharaIconRenderer.Create;
   FSpeakerCatalog := TSerifVoicevoxSpeakerCatalog.Create;
@@ -242,6 +246,8 @@ begin
   FFrameSettings.OnError := SettingsError;
   FFrameSettings.OnMoveEnd := SettingsMoveEnd;
   FFrameSettings.OnPreview := SettingsPreview;
+  FFrameSettings.OnDictionaryChanged := DictionaryChanged;
+  FFrameSettings.OnPageChanged := SettingsPageChanged;
   FFrameSettings.OnSend := SettingsSend;
 
   FShortcutFrame := TFrameSerifVoicevoxShortcuts.CreateWithRenderer(Self,
@@ -322,6 +328,7 @@ end;
 
 procedure TFrameSerifVoicevoxSimpleInput.CloseProject;
 begin
+  FFrameSettings.CancelDictionaryActions;
   FFocusExitTimer.Enabled := False;
   AviUtl2SerifResetContinuousSend;
   ClearReeditTarget;
@@ -414,7 +421,10 @@ procedure TFrameSerifVoicevoxSimpleInput.Resize;
 begin
   // スプリッターによる高さ変更は96 DPI基準で保持し、閉じて再展開しても再利用する。
   if FExpanded and not FUpdatingHeight and (Height > 0) then
-    FExpandedHeight := MulDiv(Height, 96, CurrentPPI);
+    if Assigned(FFrameSettings) and FFrameSettings.DictionaryPageActive then
+      FDictionaryExpandedHeight := MulDiv(Height, 96, CurrentPPI)
+    else
+      FExpandedHeight := MulDiv(Height, 96, CurrentPPI);
   inherited;
   UpdateDpiLayout;
 end;
@@ -509,6 +519,17 @@ end;
 procedure TFrameSerifVoicevoxSimpleInput.SettingsPreview(Sender: TObject);
 begin
   ViewPreview(Sender);
+end;
+
+procedure TFrameSerifVoicevoxSimpleInput.DictionaryChanged(Sender: TObject);
+begin
+  FPreview.Stop;
+  FView.AccentQueryJson := '';
+end;
+
+procedure TFrameSerifVoicevoxSimpleInput.SettingsPageChanged(Sender: TObject);
+begin
+  UpdateFrameHeight;
 end;
 
 procedure TFrameSerifVoicevoxSimpleInput.SettingsClose(Sender: TObject);
@@ -607,6 +628,7 @@ begin
   FExpanded := Value;
   if WasExpanded and not Value then
   begin
+    FFrameSettings.CancelDictionaryActions;
     CommitPendingEdit;
     if Assigned(FPreview) then FPreview.Stop;
   end;
@@ -630,7 +652,12 @@ var
 begin
   if FUpdatingHeight then Exit;
   if FExpanded then
-    NewHeight := MulDiv(FExpandedHeight, CurrentPPI, 96)
+  begin
+    if Assigned(FFrameSettings) and FFrameSettings.DictionaryPageActive then
+      NewHeight := MulDiv(FDictionaryExpandedHeight, CurrentPPI, 96)
+    else
+      NewHeight := MulDiv(FExpandedHeight, CurrentPPI, 96);
+  end
   else
     NewHeight := MulDiv(COLLAPSED_HEIGHT, CurrentPPI, 96);
   if Height = NewHeight then Exit;
@@ -709,6 +736,12 @@ var
   Request: TSerifVoicevoxPreviewRequest;
 begin
   if not FReady then Exit;
+  if not FPreview.Busy and FFrameSettings.DictionaryBusy then
+  begin
+    SetStatusText('単語辞書の処理が終わってから試聴してください。');
+    Exit;
+  end;
+  if not FPreview.Busy and not FFrameSettings.PreparePreview then Exit;
   if FView.SerifText = '' then
   begin
     SetStatusText(TEXT_REQUIRED);
@@ -815,6 +848,11 @@ begin
   if FPreview.Busy then
   begin
     FPreview.Stop;
+    Exit;
+  end;
+  if FFrameSettings.DictionaryBusy then
+  begin
+    SetStatusText('単語辞書の処理が終わってから送信してください。');
     Exit;
   end;
   if FView.SerifText = '' then

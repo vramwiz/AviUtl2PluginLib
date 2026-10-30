@@ -8,9 +8,9 @@ uses
   Vcl.Controls, Vcl.ExtCtrls, Vcl.Graphics;
 
 type
-  // ツールバーと設定フレームで共有する5種類のページ識別子。
+  // ツールバーと設定フレームで共有する編集・辞書ページの識別子。
   TVoicevoxToolbarPage = (vtpAccent, vtpIntonation, vtpLength,
-    vtpShortcuts, vtpAudioSettings);
+    vtpShortcuts, vtpAudioSettings, vtpDictionary, vtpDictionaryList);
   // 排他的なページ選択と、ページを切り替えない再生操作を描き分ける。
   TVoicevoxToolbarButtonKind = (vbkPage, vbkPreview, vbkSend, vbkClose,
     vbkMoveEnd);
@@ -71,7 +71,7 @@ type
       write FOnSelect;
   end;
 
-  // 5つのページボタンと右端の再生・送信ボタンを管理し、各操作を呼び出し元へ通知する。
+  // 編集・辞書ページと再生・送信ボタンを管理し、各操作を呼び出し元へ通知する。
   TVoicevoxToolbarButtons = class(TCustomPanel)
   private
     FActivePage: TVoicevoxToolbarPage;
@@ -108,7 +108,7 @@ type
   protected
     procedure Resize; override;
   public
-    // 5つの設定ページと確認再生を左から順に生成し、アクセントを初期選択する。
+    // 編集・辞書ページと確認再生を左から順に生成し、アクセントを初期選択する。
     constructor Create(AOwner: TComponent); override;
     // 所有するボタン一覧を解放する。各ボタン自体はVCLの所有関係で破棄される。
     destructor Destroy; override;
@@ -431,6 +431,26 @@ begin
           Point(CenterX + GlyphScale(6), CenterY - GlyphScale(2)),
           Point(CenterX + GlyphScale(2), CenterY - GlyphScale(2))]);
       end;
+    vtpDictionary, vtpDictionaryList:
+      begin
+        Canvas.Brush.Style := bsClear;
+        Canvas.Rectangle(CenterX - GlyphScale(9), CenterY - GlyphScale(10),
+          CenterX + GlyphScale(9), CenterY + GlyphScale(10));
+        if FPage = vtpDictionary then
+        begin
+          Canvas.MoveTo(CenterX - GlyphScale(5), CenterY);
+          Canvas.LineTo(CenterX + GlyphScale(5), CenterY);
+          Canvas.MoveTo(CenterX, CenterY - GlyphScale(5));
+          Canvas.LineTo(CenterX, CenterY + GlyphScale(5));
+        end
+        else
+          for I := -1 to 1 do
+          begin
+            Canvas.MoveTo(CenterX - GlyphScale(5), CenterY + GlyphScale(I * 5));
+            Canvas.LineTo(CenterX + GlyphScale(5), CenterY + GlyphScale(I * 5));
+          end;
+        Canvas.Brush.Style := bsSolid;
+      end;
     vtpAudioSettings:
       begin
         for I := 0 to High(GearPoints) do
@@ -506,7 +526,8 @@ end;
 constructor TVoicevoxToolbarButtons.Create(AOwner: TComponent);
 const
   HINTS: array[TVoicevoxToolbarPage] of string = (
-    'アクセント', 'イントネーション', '長さ', 'ショートカット', '音声設定');
+    'アクセント', 'イントネーション', '長さ', 'ショートカット', '音声設定',
+    '単語登録・編集', '登録単語一覧');
 var
   Button: TVoicevoxToolbarButton;
   Page: TVoicevoxToolbarPage;

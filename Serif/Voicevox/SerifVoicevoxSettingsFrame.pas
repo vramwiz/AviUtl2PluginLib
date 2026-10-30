@@ -8,7 +8,7 @@ uses
   VoicevoxToolbarButtons, SerifVoicevoxAccentView,
   SerifVoicevoxIntonationFrame, SerifVoicevoxLengthFrame,
   SerifVoicevoxAudioSettingsFrame, SerifVoicevoxAudioSettings, Vcl.ComCtrls,
-  Vcl.ToolWin;
+  Vcl.ToolWin, SerifVoicevoxDictionaryPage;
 
 type
   TFrameSerifVoicevoxSettings = class(TFrame)
@@ -22,6 +22,7 @@ type
     FFrameIntonation: TFrameSerifVoicevoxIntonation;
     FFrameLength: TFrameSerifVoicevoxLength;
     FFrameVoice: TFrameSerifVoicevoxAudioSettings;
+    FDictionary: TSerifVoicevoxDictionaryPage;
     FPanelShortcuts: TPanel;
     FCurrentText: string;
     FCurrentSpeakerUUID: string;
@@ -29,9 +30,11 @@ type
     FDisplayedStyleId: Integer;
     FOnAccentChange: TSerifVoicevoxAccentQueryEvent;
     FOnClose: TNotifyEvent;
+    FOnDictionaryChanged: TNotifyEvent;
     FOnError: TSerifVoicevoxAccentErrorEvent;
     FOnMoveEnd: TNotifyEvent;
     FOnPreview: TNotifyEvent;
+    FOnPageChanged: TNotifyEvent;
     FOnSend: TNotifyEvent;
     FSaveTimer: TTimer;
     FSettings: TSerifVoicevoxAudioSettings;
@@ -40,6 +43,9 @@ type
     procedure AccentError(Sender: TObject; const ErrorMessage: string);
     procedure AudioChange(Sender: TObject);
     procedure CloseRequest(Sender: TObject);
+    procedure DictionaryBack(Sender: TObject);
+    procedure DictionaryChanged(Sender: TObject);
+    procedure DictionaryEdit(Sender: TObject);
     procedure IntonationChange(Sender: TObject; const QueryJson: string);
     procedure LengthChange(Sender: TObject; const QueryJson: string);
     procedure MoveEndRequest(Sender: TObject);
@@ -49,7 +55,7 @@ type
     procedure ToolbarPageSelected(Sender: TObject;
       const Page: TVoicevoxToolbarPage);
   public
-    // 5つの編集ページ、再生付きツールバー、遅延保存タイマーを生成し、アクセントを表示する。
+    // 編集・辞書ページ、再生付きツールバー、遅延保存タイマーを生成し、アクセントを表示する。
     constructor Create(AOwner: TComponent); override;
     // 保存待ちの変更を保存してから、設定ページと設定ストアを破棄する。
     destructor Destroy; override;
@@ -63,6 +69,12 @@ type
     procedure OpenProject(const ProjectFolder: string);
     // 遅延保存待ちの音声設定を直ちに保存する。
     procedure Save;
+    // 辞書を編集中なら保存後に試聴を再要求する。API処理中は古い解析で再生しない。
+    function PreparePreview: Boolean;
+    function DictionaryBusy: Boolean;
+    function DictionaryPageActive: Boolean;
+    // ページを閉じたり台本を切り替えた後の自動試聴・ページ移動を取り消す。
+    procedure CancelDictionaryActions;
     // 現在編集している本文のアクセントを表示する。空文字は表示解除を表す。
     procedure ShowAccent(const Text: string; const StyleId: Integer;
       const QueryJson: string = '');
@@ -74,6 +86,10 @@ type
       read FOnAccentChange write FOnAccentChange;
     // ツールバー左端の×から入力パネルを閉じる要求を通知する。
     property OnClose: TNotifyEvent read FOnClose write FOnClose;
+    // 辞書更新直後、呼び出し元の確認再生とキャッシュを無効化するよう通知する。
+    property OnDictionaryChanged: TNotifyEvent read FOnDictionaryChanged write FOnDictionaryChanged;
+    // 辞書用と通常編集用の表示高さを、呼び出し元が切り替えるための通知。
+    property OnPageChanged: TNotifyEvent read FOnPageChanged write FOnPageChanged;
     property OnError: TSerifVoicevoxAccentErrorEvent
       read FOnError write FOnError;
     // ツールバーからセリフ一覧の終了位置へ移動する要求を通知する。
@@ -137,6 +153,15 @@ begin
   FPanelShortcuts.ParentBackground := False;
   FPanelShortcuts.Visible := False;
 
+  FDictionary := TSerifVoicevoxDictionaryPage.Create(Self);
+  FDictionary.Parent := Self;
+  FDictionary.Align := alClient;
+  FDictionary.Visible := False;
+  FDictionary.OnChanged := DictionaryChanged;
+  FDictionary.OnPreview := PreviewRequest;
+  FDictionary.OnBack := DictionaryBack;
+  FDictionary.OnEdit := DictionaryEdit;
+
   FToolbar := TVoicevoxToolbarButtons.Create(Self);
   FToolbar.Parent := Self;
   FToolbar.Align := alTop;
@@ -159,6 +184,51 @@ begin
   if Assigned(FFrameAccent) then FFrameAccent.ApplyDpi;
   if Assigned(FFrameIntonation) then FFrameIntonation.ApplyDpi;
   if Assigned(FFrameLength) then FFrameLength.ApplyDpi;
+  if Assigned(FDictionary) then FDictionary.ApplyDpi;
+end;
+
+procedure TFrameSerifVoicevoxSettings.DictionaryChanged(Sender: TObject);
+begin
+  if Assigned(FOnDictionaryChanged) then FOnDictionaryChanged(Self);
+  // 句の読み、アクセント、手動pitch・長さを含む旧クエリを再利用しない。
+  if Assigned(FOnAccentChange) then FOnAccentChange(Self, '');
+  ShowAccent(FCurrentText, FCurrentStyleId, '');
+end;
+
+procedure TFrameSerifVoicevoxSettings.DictionaryBack(Sender: TObject);
+begin
+  FToolbar.Activate(vtpAccent);
+end;
+
+procedure TFrameSerifVoicevoxSettings.DictionaryEdit(Sender: TObject);
+begin
+  FToolbar.Activate(vtpDictionary);
+end;
+
+function TFrameSerifVoicevoxSettings.PreparePreview: Boolean;
+begin
+  Result := not FDictionary.Busy;
+  if not Result then Exit;
+  if (FToolbar.ActivePage = vtpDictionary) and FDictionary.Dirty then
+  begin
+    Result := False;
+    FDictionary.SaveAndPreview;
+  end;
+end;
+
+function TFrameSerifVoicevoxSettings.DictionaryBusy: Boolean;
+begin
+  Result := FDictionary.Busy;
+end;
+
+function TFrameSerifVoicevoxSettings.DictionaryPageActive: Boolean;
+begin
+  Result := Assigned(FToolbar) and (FToolbar.ActivePage in [vtpDictionary, vtpDictionaryList]);
+end;
+
+procedure TFrameSerifVoicevoxSettings.CancelDictionaryActions;
+begin
+  FDictionary.CancelPendingActions;
 end;
 
 procedure TFrameSerifVoicevoxSettings.AccentChange(Sender: TObject;
@@ -249,6 +319,7 @@ end;
 
 procedure TFrameSerifVoicevoxSettings.CloseRequest(Sender: TObject);
 begin
+  CancelDictionaryActions;
   if Assigned(FOnClose) then FOnClose(Self);
 end;
 
@@ -261,6 +332,7 @@ procedure TFrameSerifVoicevoxSettings.SetPreviewActive(
   const Value: Boolean);
 begin
   FToolbar.SetPreviewActive(Value);
+  FDictionary.SetPreviewActive(Value);
 end;
 
 destructor TFrameSerifVoicevoxSettings.Destroy;
@@ -280,6 +352,7 @@ end;
 procedure TFrameSerifVoicevoxSettings.OpenProject(
   const ProjectFolder: string);
 begin
+  CancelDictionaryActions;
   FSaveTimer.Enabled := False;
   FSettings.OpenProject(ProjectFolder);
   if (FCurrentSpeakerUUID <> '') and (FCurrentStyleId >= 0) then
@@ -312,6 +385,7 @@ begin
     (FDisplayedStyleId <> StyleId) and (Trim(QueryJson) = '');
   FCurrentText := Text;
   FDisplayedStyleId := StyleId;
+  FDictionary.SetContext(Text, StyleId);
   FUpdatingQuery := True;
   try
     SharedQuery := FFrameIntonation.ShowQuery(QueryJson, KeepIntonation);
@@ -329,6 +403,7 @@ procedure TFrameSerifVoicevoxSettings.ShowStyle(const SpeakerUUID: string;
 begin
   FCurrentSpeakerUUID := Trim(SpeakerUUID);
   FCurrentStyleId := StyleId;
+  FDictionary.SetContext(FCurrentText, StyleId);
   if (FCurrentSpeakerUUID = '') or (FCurrentStyleId < 0) then
     FFrameVoice.SetValues(TSerifVoicevoxAudioValues.Defaults)
   else
@@ -339,6 +414,7 @@ end;
 procedure TFrameSerifVoicevoxSettings.ToolbarPageSelected(Sender: TObject;
   const Page: TVoicevoxToolbarPage);
 begin
+  if Page <> vtpDictionary then CancelDictionaryActions;
   DisableAlign;
   try
     PanelAccent.Visible := Page = vtpAccent;
@@ -346,9 +422,13 @@ begin
     PanelLength.Visible := Page = vtpLength;
     FPanelShortcuts.Visible := Page = vtpShortcuts;
     PanelVoice.Visible := Page = vtpAudioSettings;
+    FDictionary.Visible := Page in [vtpDictionary, vtpDictionaryList];
+    if Page = vtpDictionary then FDictionary.ShowEditor
+    else if Page = vtpDictionaryList then FDictionary.ShowList;
   finally
     EnableAlign;
   end;
+  if Assigned(FOnPageChanged) then FOnPageChanged(Self);
 end;
 
 end.
