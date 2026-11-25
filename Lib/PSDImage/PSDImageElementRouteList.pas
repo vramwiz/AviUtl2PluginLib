@@ -66,8 +66,10 @@ type
   // 大分類／小分類から実レイヤー候補へ引く索引リスト
   TPSDElementRouteList = class(TObjectList<TPSDElementRouteItem>)
   private
-    // 大分類名と小分類名に一致する索引項目を返す
-	    function FindItem(const GroupName, ElementName, PartName: string): TPSDElementRouteItem;
+    // 旧設定の排他マーカーなし大分類名にも対応して索引項目を返す。
+    function FindItem(const GroupName, ElementName, PartName: string): TPSDElementRouteItem;
+    // 親ルート・大分類名・小分類名が一致する候補の中から選ぶ。
+    function FindExactItem(const GroupName, ElementName, PartName: string): TPSDElementRouteItem;
     // PSDレイヤーインデックスから対応するツリーを返す
     function LayerIndexToTree(PSDImage: TPSDImage; LayerIndex: Integer): TPsdFileTree;
     // Root仮想大分類の候補索引を構築する
@@ -572,6 +574,19 @@ begin
 end;
 
 function TPSDElementRouteList.FindItem(const GroupName, ElementName, PartName: string): TPSDElementRouteItem;
+var
+  LegacyElementName: string;
+begin
+  Result := FindExactItem(GroupName, ElementName, PartName);
+  if Result <> nil then Exit;
+
+  // 後から排他選択になった大分類を、保存済みのマーカーなしの名前から解決する。
+  LegacyElementName := Trim(ElementName);
+  if (LegacyElementName <> '') and not CharInSet(LegacyElementName[1], ['*', '+', '!', '-']) then
+    Result := FindExactItem(GroupName, '*' + LegacyElementName, PartName);
+end;
+
+function TPSDElementRouteList.FindExactItem(const GroupName, ElementName, PartName: string): TPSDElementRouteItem;
 var
   i: Integer;
   Item: TPSDElementRouteItem;

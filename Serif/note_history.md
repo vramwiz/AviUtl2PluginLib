@@ -951,3 +951,8 @@
 - VCLのComboBoxがItems／ItemIndexでHandleを生成することをRTLソースで確認し、初期設定をページの初表示まで遅延した。辞書用の表示高さは通常編集と別に560pxを初期値として保持し、DPI・スクロール・ボタン折返しへ対応した。
 - 公式参照: https://github.com/VOICEVOX/voicevox_engine/blob/0.26.0/voicevox_engine/app/routers/user_dict.py 、user_dict/model.py、utility/text_utility.py、およびVOICEVOX 0.26.1のWordEditor.vue。プロジェクトXML・3ユニットの登録／実在、宣言と実装、モーラ規則・APIパラメーターの一致、モーダルフォームを追加していないこと、差分とUTF-8 BOMを確認した。
 - ビルドはユーザー担当のため実行せず、実Engineへの追加・更新・削除、AviUtl2／Desktop上の表示・試聴・再解析は未確認。検証ビルドや実機更新一式は作成していない。
+
+## 2026-10-30 辞書ページのFont保護アクセスによるビルドエラーを修正
+
+- SerifVoicevoxDictionaryPage.ApplyDpiから使用するTSerifVoicevoxAccentPaintControlの継承Fontプロパティをpublicへ公開した。別ユニットからのFont.Height設定で発生していたE2362を解消し、既存の14px基準のDPI計算を維持する。
+- ソース差分・アクセス宣言・UTF-8 BOMとCRLFを確認。ビルドはユーザー担当のため実行せず、ビルド成功・実機表示は未確認。

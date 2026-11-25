@@ -88,6 +88,7 @@ type
     procedure CancelReadingEdit;
     // audio_queryからアクセント句を読み取り、描画用のモーラ列へ反映する。
     procedure SetQueryJson(const QueryJson: string);
+    property Font;
     // 横スクロール範囲へ設定する、全モーラを描画可能な幅。
     property ContentWidth: Integer read GetContentWidth;
     // 辞書のアクセント表示では、読み欄と競合する句分割・インライン読み編集を使わない。
