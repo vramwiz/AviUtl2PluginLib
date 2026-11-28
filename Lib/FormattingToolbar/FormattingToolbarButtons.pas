@@ -646,7 +646,7 @@ begin
         Canvas.Font.Name := 'Segoe UI';
         Canvas.Font.Height := -Max(8, H * 52 div 100);
         Canvas.Font.Style := [fsBold];
-        Canvas.Font.Color := clAqua;
+        Canvas.Font.Color := Accent;
         for GlyphY := -1 to 1 do
           for GlyphX := -1 to 1 do
             if (GlyphX <> 0) or (GlyphY <> 0) then

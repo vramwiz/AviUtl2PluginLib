@@ -146,38 +146,6 @@ begin
   end;
 end;
 
-procedure BlendStraightAlpha(const ASource: TTextRenderPixel;
-  var ADestination: TTextRenderPixel);
-var
-  InverseAlpha: Integer;
-  OutputAlpha: Integer;
-begin
-  if ASource.A = 0 then
-    Exit;
-  if ASource.A = 255 then
-  begin
-    ADestination := ASource;
-    Exit;
-  end;
-  InverseAlpha := 255 - ASource.A;
-  OutputAlpha := ASource.A + (ADestination.A * InverseAlpha + 127) div 255;
-  if OutputAlpha = 0 then
-  begin
-    ADestination := System.Default(TTextRenderPixel);
-    Exit;
-  end;
-  ADestination.R := (ASource.R * ASource.A +
-    ADestination.R * ADestination.A * InverseAlpha div 255 +
-    OutputAlpha div 2) div OutputAlpha;
-  ADestination.G := (ASource.G * ASource.A +
-    ADestination.G * ADestination.A * InverseAlpha div 255 +
-    OutputAlpha div 2) div OutputAlpha;
-  ADestination.B := (ASource.B * ASource.A +
-    ADestination.B * ADestination.A * InverseAlpha div 255 +
-    OutputAlpha div 2) div OutputAlpha;
-  ADestination.A := OutputAlpha;
-end;
-
 procedure CompositeSerifSyncJump(const AItems: TArray<TSerifSyncJumpItem>;
   const ADestinationImage: TTextRenderImage;
   const AEffectX, AEffectY, ABandTop, ABandBottom: Integer;

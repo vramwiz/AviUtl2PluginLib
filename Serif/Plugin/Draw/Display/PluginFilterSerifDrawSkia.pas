@@ -65,6 +65,10 @@ type
       const AParameters: TSerifDrawAnimationParameters);
   end;
 
+// 本文・配役名・プレビュー共通の文字スタイルを描画リクエストへ反映する。
+procedure ApplySerifDrawTextStyle(var ARequest: TTextRenderRequest;
+  const AStyle: TSerifDrawLayerStyle; const AScale: Double = 1.0);
+
 // Skia描画基盤をプロセス単位で初期化する。FinalizeSerifDrawSkiaと対で呼び出す。
 procedure InitializeSerifDrawSkia;
 // Skia描画基盤が保持するプロセス単位の資源を解放する。
@@ -127,41 +131,6 @@ type
 var
   SkiaRuntimeAcquired: Boolean;
 
-procedure BlendStraightAlpha(const ASource: TTextRenderPixel;
-  var ADestination: TTextRenderPixel);
-var
-  AlphaDenominator: Cardinal;
-  DestinationAlpha: Cardinal;
-  SourceAlpha: Cardinal;
-begin
-  SourceAlpha := ASource.A;
-  if SourceAlpha = 0 then
-    Exit;
-  if SourceAlpha = 255 then
-  begin
-    ADestination := ASource;
-    Exit;
-  end;
-  DestinationAlpha := ADestination.A;
-  AlphaDenominator := SourceAlpha * 255 +
-    DestinationAlpha * (255 - SourceAlpha);
-  if AlphaDenominator = 0 then
-  begin
-    ADestination := System.Default(TTextRenderPixel);
-    Exit;
-  end;
-  ADestination.R := (Cardinal(ASource.R) * SourceAlpha * 255 +
-    Cardinal(ADestination.R) * DestinationAlpha * (255 - SourceAlpha) +
-    AlphaDenominator div 2) div AlphaDenominator;
-  ADestination.G := (Cardinal(ASource.G) * SourceAlpha * 255 +
-    Cardinal(ADestination.G) * DestinationAlpha * (255 - SourceAlpha) +
-    AlphaDenominator div 2) div AlphaDenominator;
-  ADestination.B := (Cardinal(ASource.B) * SourceAlpha * 255 +
-    Cardinal(ADestination.B) * DestinationAlpha * (255 - SourceAlpha) +
-    AlphaDenominator div 2) div AlphaDenominator;
-  ADestination.A := (AlphaDenominator + 127) div 255;
-end;
-
 function PluginDirectory: string;
 var
   Buffer: array[0..MAX_PATH - 1] of Char;
@@ -201,6 +170,61 @@ destructor TSerifRoleNameRenderItem.Destroy;
 begin
   Image.Free;
   inherited;
+end;
+
+procedure ApplySerifDrawTextStyle(var ARequest: TTextRenderRequest;
+  const AStyle: TSerifDrawLayerStyle; const AScale: Double);
+var
+  BlurWidth: Double;
+  InnerWidth: Double;
+  OuterWidth: Double;
+  Shadow: TTextRenderShadow;
+begin
+  ARequest.FontFamilies := [AStyle.FontName, 'Yu Gothic UI', 'Meiryo UI',
+    'Segoe UI'];
+  ARequest.FontSize := Max(1.0, AStyle.FontSize * AScale);
+  ARequest.LetterSpacing := AStyle.LetterSpacing * AScale;
+  ARequest.LineSpacing := AStyle.LineSpacing * AScale;
+  ARequest.FontStyle := [];
+  if (AStyle.FontStyles and SERIF_FONT_BOLD) <> 0 then
+    Include(ARequest.FontStyle, TTextRenderFontStyleItem.Bold);
+  if (AStyle.FontStyles and SERIF_FONT_ITALIC) <> 0 then
+    Include(ARequest.FontStyle, TTextRenderFontStyleItem.Italic);
+  ARequest.FillColor := AStyle.FillColor;
+  ARequest.Outlines := nil;
+  if AStyle.OutlineEnabled then
+  begin
+    InnerWidth := SerifDrawOutlineWidthPixels(AStyle.OutlineWidth,
+      AStyle.FontSize) * AScale;
+    BlurWidth := SerifDrawOutlineBlurPixels(AStyle.OutlineBlur,
+      AStyle.FontSize) * AScale;
+    OuterWidth := SerifDrawOutlineWidthPixels(AStyle.OuterOutlineWidth,
+      AStyle.FontSize) * AScale;
+    // ストロークは輪郭の中心へ描かれる。外側から順に重ね、内側との差が外フチになる。
+    if (OuterWidth > 0) and (AStyle.OuterOutlineColor shr 24 <> 0) then
+      ARequest.Outlines := [TTextRenderOutline.Create(InnerWidth + OuterWidth,
+        AStyle.OuterOutlineColor)];
+    if BlurWidth > 0 then
+      ARequest.Outlines := ARequest.Outlines + [
+        TTextRenderOutline.Create(InnerWidth, BlurWidth, AStyle.BlurColor)];
+    if (BlurWidth <= 0) or (AStyle.BlurColor <> AStyle.OutlineColor) then
+      ARequest.Outlines := ARequest.Outlines + [
+        TTextRenderOutline.Create(InnerWidth, AStyle.OutlineColor)];
+  end;
+  ARequest.Shadows := nil;
+  if AStyle.ShadowEnabled then
+  begin
+    Shadow := System.Default(TTextRenderShadow);
+    Shadow.Offset := PointF(
+      SerifDrawShadowOffsetPixels(AStyle.ShadowOffsetX, AStyle.FontSize) * AScale,
+      SerifDrawShadowOffsetPixels(AStyle.ShadowOffsetY, AStyle.FontSize) * AScale);
+    Shadow.BlurRadius := SerifDrawShadowBlurPixels(AStyle.ShadowBlur,
+      AStyle.FontSize) * AScale;
+    Shadow.SpreadRadius := SerifDrawShadowSpreadPixels(AStyle.ShadowSpread,
+      AStyle.FontSize) * AScale;
+    Shadow.Color := AStyle.ShadowColor;
+    ARequest.Shadows := [Shadow];
+  end;
 end;
 
 function TSerifSkiaRender.BuildCacheIdentity(
@@ -572,14 +596,11 @@ var
   Metrics: TTextRenderMetrics;
   NewRenderCount: Integer;
   OutlineIndex: Integer;
-  OutlineBlurPixels: Double;
-  OutlineWidthPixels: Double;
   Renderer: TCustomTextRenderer;
   Request: TTextRenderRequest;
   SavedOutlines: TArray<TTextRenderOutline>;
   SavedShadows: TArray<TTextRenderShadow>;
   Row: Integer;
-  Shadow: TTextRenderShadow;
   Style: TSerifDrawLayerStyle;
   Source: PTextRenderPixel;
   TextUnitImage: TTextRenderImage;
@@ -636,52 +657,7 @@ begin
         Request.CaptureTextUnits := AParameters.SyncKind in
           [SERIF_ANIMATION_SYNC_GLOW];
         Request.Alignment := TTextRenderAlignment(Style.Alignment);
-        Request.FontFamilies := [Style.FontName, 'Yu Gothic UI', 'Meiryo UI',
-          'Segoe UI'];
-        Request.FontSize := Style.FontSize;
-        Request.LetterSpacing := Style.LetterSpacing;
-        Request.LineSpacing := Style.LineSpacing;
-        Request.FontStyle := [];
-        if (Style.FontStyles and SERIF_FONT_BOLD) <> 0 then
-          Include(Request.FontStyle, TTextRenderFontStyleItem.Bold);
-        if (Style.FontStyles and SERIF_FONT_ITALIC) <> 0 then
-          Include(Request.FontStyle, TTextRenderFontStyleItem.Italic);
-        Request.FillColor := Style.FillColor;
-        // キャッシュ署名には比率を残し、ラスタライズ境界でpx換算と負荷上限を適用する。
-        OutlineWidthPixels := SerifDrawOutlineWidthPixels(Style.OutlineWidth,
-          Style.FontSize);
-        OutlineBlurPixels := SerifDrawOutlineBlurPixels(Style.OutlineBlur,
-          Style.FontSize);
-        if not Style.OutlineEnabled then
-          Request.Outlines := nil
-        else if OutlineBlurPixels <= 0 then
-          Request.Outlines := [TTextRenderOutline.Create(OutlineWidthPixels,
-            Style.OutlineColor)]
-        else if Style.BlurColor = Style.OutlineColor then
-          Request.Outlines := [TTextRenderOutline.Create(OutlineWidthPixels,
-            OutlineBlurPixels,
-            Style.BlurColor)]
-        else
-          Request.Outlines := [
-            TTextRenderOutline.Create(OutlineWidthPixels, OutlineBlurPixels,
-              Style.BlurColor),
-            TTextRenderOutline.Create(OutlineWidthPixels,
-              Style.OutlineColor)];
-        if Style.ShadowEnabled then
-        begin
-          Shadow := System.Default(TTextRenderShadow);
-          Shadow.Offset := PointF(
-            SerifDrawShadowOffsetPixels(Style.ShadowOffsetX,
-              Style.FontSize),
-            SerifDrawShadowOffsetPixels(Style.ShadowOffsetY,
-              Style.FontSize));
-          Shadow.BlurRadius := SerifDrawShadowBlurPixels(Style.ShadowBlur,
-            Style.FontSize);
-          Shadow.SpreadRadius := SerifDrawShadowSpreadPixels(
-            Style.ShadowSpread, Style.FontSize);
-          Shadow.Color := Style.ShadowColor;
-          Request.Shadows := [Shadow];
-        end;
+        ApplySerifDrawTextStyle(Request, Style);
         Image := Renderer.Render(Request, Metrics);
         TotalLayoutMilliseconds := TotalLayoutMilliseconds +
           Metrics.LayoutMilliseconds;
@@ -1268,11 +1244,8 @@ var
   I: Integer;
   Item: TSerifRoleNameRenderItem;
   Metrics: TTextRenderMetrics;
-  OutlineBlurPixels: Double;
-  OutlineWidthPixels: Double;
   Request: TTextRenderRequest;
   RoleName: string;
-  Shadow: TTextRenderShadow;
   Style: TSerifDrawLayerStyle;
   TotalMilliseconds: Double;
   VisibleIndices: TArray<Integer>;
@@ -1301,50 +1274,7 @@ begin
     Request := TTextRenderRequest.Default;
     Request.Text := RoleName;
     Request.Alignment := TTextRenderAlignment(Item.Layout.Placement mod 3);
-    Request.FontFamilies := [Style.FontName, 'Yu Gothic UI', 'Meiryo UI',
-      'Segoe UI'];
-    Request.FontSize := Style.FontSize;
-    Request.LetterSpacing := Style.LetterSpacing;
-    Request.LineSpacing := Style.LineSpacing;
-    Request.FontStyle := [];
-    if (Style.FontStyles and SERIF_FONT_BOLD) <> 0 then
-      Include(Request.FontStyle, TTextRenderFontStyleItem.Bold);
-    if (Style.FontStyles and SERIF_FONT_ITALIC) <> 0 then
-      Include(Request.FontStyle, TTextRenderFontStyleItem.Italic);
-    Request.FillColor := Style.FillColor;
-    // 配役名も本文と同じ換算規則を通し、大きな文字で描画負荷が突出するのを防ぐ。
-    OutlineWidthPixels := SerifDrawOutlineWidthPixels(Style.OutlineWidth,
-      Style.FontSize);
-    OutlineBlurPixels := SerifDrawOutlineBlurPixels(Style.OutlineBlur,
-      Style.FontSize);
-    if not Style.OutlineEnabled then
-      Request.Outlines := nil
-    else if OutlineBlurPixels <= 0 then
-      Request.Outlines := [TTextRenderOutline.Create(OutlineWidthPixels,
-        Style.OutlineColor)]
-    else if Style.BlurColor = Style.OutlineColor then
-      Request.Outlines := [TTextRenderOutline.Create(OutlineWidthPixels,
-        OutlineBlurPixels,
-        Style.BlurColor)]
-    else
-      Request.Outlines := [
-        TTextRenderOutline.Create(OutlineWidthPixels, OutlineBlurPixels,
-          Style.BlurColor),
-        TTextRenderOutline.Create(OutlineWidthPixels,
-          Style.OutlineColor)];
-    if Style.ShadowEnabled then
-    begin
-      Shadow := System.Default(TTextRenderShadow);
-      Shadow.Offset := PointF(
-        SerifDrawShadowOffsetPixels(Style.ShadowOffsetX, Style.FontSize),
-        SerifDrawShadowOffsetPixels(Style.ShadowOffsetY, Style.FontSize));
-      Shadow.BlurRadius := SerifDrawShadowBlurPixels(Style.ShadowBlur,
-        Style.FontSize);
-      Shadow.SpreadRadius := SerifDrawShadowSpreadPixels(
-        Style.ShadowSpread, Style.FontSize);
-      Shadow.Color := Style.ShadowColor;
-      Request.Shadows := [Shadow];
-    end;
+    ApplySerifDrawTextStyle(Request, Style);
     Item.Image := TCustomTextRenderer(FRenderer).Render(Request, Metrics);
     TotalMilliseconds := TotalMilliseconds + Metrics.TotalMilliseconds;
     TObjectList<TSerifRoleNameRenderItem>(FRoleNameItems).Add(Item);

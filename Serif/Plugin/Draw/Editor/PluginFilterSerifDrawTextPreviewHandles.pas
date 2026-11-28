@@ -16,7 +16,8 @@ type
     sdthOutlineWidth,
     sdthShadowBlur,
     sdthShadowOffset,
-    sdthShadowSpread
+    sdthShadowSpread,
+    sdthOuterOutlineWidth
   );
 
   TSerifDrawTextPreviewHandleState = record
@@ -27,6 +28,7 @@ type
     LayoutRect: TRect;
     OutlineBlurRect: TRect;
     OutlineWidthRect: TRect;
+    OuterOutlineWidthRect: TRect;
     ShadowBlurRect: TRect;
     ShadowOffsetRect: TRect;
     ShadowSpreadRect: TRect;
@@ -51,6 +53,7 @@ const
   HANDLE_GLYPH_WHITE = TColor($00E6E6E6);
   // RGB(48, 168, 208)。影・ぼかしを無彩色の文字や枠から見分ける。
   HANDLE_SHADOW_ACCENT = TColor($00D0A830);
+  HANDLE_OUTER_OUTLINE_ACCENT = TColor($0069B9FF);
 
 procedure DrawSerifDrawTextPreviewHandles(const Canvas: TCanvas;
   const State: TSerifDrawTextPreviewHandleState);
@@ -142,10 +145,22 @@ var
     Canvas.Brush.Style := bsSolid;
   end;
 
-  procedure DrawWhiteOutlineGlyph(const HandleRect: TRect);
-  var
-    X: Integer;
-    Y: Integer;
+  procedure DrawOutlineGlyph(const HandleRect: TRect; const ADoubleOutline: Boolean);
+    procedure DrawStroke(const AWidth: Integer; const AColor: TColor);
+    var
+      X: Integer;
+      Y: Integer;
+    begin
+      Canvas.Font.Color := AColor;
+      for Y := -AWidth to AWidth do
+        for X := -AWidth to AWidth do
+          if (Abs(X) = AWidth) or (Abs(Y) = AWidth) then
+          begin
+            OffsetRect(GlyphRect, X, Y);
+            DrawText(Canvas.Handle, 'A', 1, GlyphRect, HANDLE_GLYPH_TEXT_FLAGS);
+            OffsetRect(GlyphRect, -X, -Y);
+          end;
+    end;
   begin
     GlyphRect := HandleRect;
     InflateRect(GlyphRect, -3, -3);
@@ -153,16 +168,9 @@ var
     Canvas.Font.Name := 'Segoe UI';
     Canvas.Font.Height := -Max(10, HandleRect.Height * 68 div 100);
     Canvas.Font.Style := [fsBold];
-    Canvas.Font.Color := HANDLE_GLYPH_WHITE;
-    for Y := -1 to 1 do
-      for X := -1 to 1 do
-        if (X <> 0) or (Y <> 0) then
-        begin
-          OffsetRect(GlyphRect, X, Y);
-          DrawText(Canvas.Handle, 'A', 1, GlyphRect,
-            HANDLE_GLYPH_TEXT_FLAGS);
-          OffsetRect(GlyphRect, -X, -Y);
-        end;
+    if ADoubleOutline then
+      DrawStroke(Max(3, MulDiv(3, State.Dpi, 96)), HANDLE_OUTER_OUTLINE_ACCENT);
+    DrawStroke(Max(1, MulDiv(1, State.Dpi, 96)), HANDLE_GLYPH_WHITE);
     // 中央を背景色で抜き、白い輪郭だけのAにする。
     Canvas.Font.Color := HANDLE_BACKGROUND_COLOR;
     DrawText(Canvas.Handle, 'A', 1, GlyphRect, HANDLE_GLYPH_TEXT_FLAGS);
@@ -192,7 +200,15 @@ begin
 
   BeginDecorationHandle(Point(State.LayoutRect.Right, State.LayoutRect.Top),
     State.OutlineWidthRect, sdthOutlineWidth);
-  DrawWhiteOutlineGlyph(State.OutlineWidthRect);
+  DrawOutlineGlyph(State.OutlineWidthRect, False);
+  if not State.OuterOutlineWidthRect.IsEmpty then
+  begin
+    BeginDecorationHandleBetween(Point(State.OutlineWidthRect.CenterPoint.X,
+      State.OutlineWidthRect.Top), Point(State.OuterOutlineWidthRect.CenterPoint.X,
+      State.OuterOutlineWidthRect.Bottom),
+      State.OuterOutlineWidthRect, sdthOuterOutlineWidth);
+    DrawOutlineGlyph(State.OuterOutlineWidthRect, True);
+  end;
 
   BeginDecorationHandleBetween(Point(State.OutlineWidthRect.Right,
     (State.OutlineWidthRect.Top + State.OutlineWidthRect.Bottom) div 2),

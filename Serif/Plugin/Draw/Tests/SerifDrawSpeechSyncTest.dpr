@@ -33,6 +33,42 @@ begin
     raise Exception.Create(AMessage);
 end;
 
+procedure CheckTranslucentOutlineCompositing;
+var
+  Destination, Source: TTextRenderImage;
+  JumpItem: TSerifSyncJumpItem;
+  Pixel: TTextRenderPixel;
+  ZoomItem: TSerifSyncZoomItem;
+begin
+  Source := TTextRenderImage.Create(Rect(0, 0, 1, 1));
+  try
+    Destination := TTextRenderImage.Create(Rect(0, 0, 1, 1));
+    try
+      FillChar(Pixel, SizeOf(Pixel), 255);
+      Pixel.A := 8;
+      Source.Data^ := Pixel;
+      Pixel.A := 16;
+      Destination.Data^ := Pixel;
+      ZoomItem.SourceImage := Source;
+      ZoomItem.DestinationRect := Source.Bounds;
+      CompositeSerifSyncZoom([ZoomItem], Destination, 0, 0, 0, 1, False);
+      Require((Destination.Data^.R = 255) and (Destination.Data^.A = 23),
+        'Zoom must keep the white color of overlapping translucent outline pixels.');
+
+      Destination.Data^ := Pixel;
+      JumpItem.SourceImage := Source;
+      JumpItem.DestinationRect := Source.Bounds;
+      CompositeSerifSyncJump([JumpItem], Destination, 0, 0, 0, 1, False);
+      Require((Destination.Data^.R = 255) and (Destination.Data^.A = 23),
+        'Jump must keep the white color of overlapping translucent outline pixels.');
+    finally
+      Destination.Free;
+    end;
+  finally
+    Source.Free;
+  end;
+end;
+
 var
   BackingRegions: TArray<TSerifSyncBackingRegion>;
   BaseImage: TTextRenderImage;
@@ -55,6 +91,7 @@ var
   UnderlineRegions: TArray<TSerifSyncUnderlineRegion>;
   ZoomItems: TArray<TSerifSyncZoomItem>;
 begin
+  CheckTranslucentOutlineCompositing;
   Require(Abs(CalculateSerifSpeechProgress(0.5, 2.0) - 0.25) < 0.000001,
     'Speech progress mismatch.');
   Require(IsSerifSpeechActive(True, '0,10000000,a', 'test', 0.5, 2.0),

@@ -14,6 +14,72 @@ begin
     raise Exception.Create(AMessage);
 end;
 
+procedure CheckTextDecoration;
+const
+  LEGACY_COLORS = '726F6C652061,FFFFFFFF,FF000000,FF000000,FF000000';
+var
+  Colors: TSerifDrawLayerColors;
+  Decoded: TSerifDrawSettings;
+  ErrorText: string;
+  Preset: TSerifDrawTextDecorationPreset;
+  Settings: TSerifDrawSettings;
+  Style: TSerifDrawLayerStyle;
+begin
+  Require(TSerifDrawSettings.TryDecode('SD7;colors=' + LEGACY_COLORS,
+    Settings, ErrorText), 'Existing SD7 role colors must still load.');
+  Style := Settings.ResolveStyle(2, 'Role A');
+  Require((Style.OuterOutlineWidth = 0) and not Style.HasOuterOutlineColor,
+    'Existing SD7 styles must not acquire a second outline.');
+  Settings.OuterOutlineColor := $FF332244;
+  Style := Settings.ResolveStyle(2, 'Role A');
+  Require(Style.OuterOutlineColor = $FF332244,
+    'Old role colors must inherit the common outer outline color.');
+
+  for Preset := Low(TSerifDrawTextDecorationPreset) to
+    High(TSerifDrawTextDecorationPreset) do
+  begin
+    Style.ApplyDecorationPreset(Preset);
+    Settings.SetTextDecorationShape(Style, False);
+    Require(TSerifDrawSettings.TryDecode(Settings.Encode, Decoded, ErrorText),
+      'Preset did not round-trip: ' + ErrorText);
+    Require((Decoded.FontSize = 54) and (Decoded.FontName = 'Yu Gothic UI'),
+      'Decoration presets must preserve typography.');
+  end;
+
+  Style.ApplyDecorationPreset(sdpDoubleOutline);
+  Settings.SetTextDecorationShape(Style, False);
+  Require(Settings.RoleNameOuterOutlineWidth = 0,
+    'Changing text decoration must not change the role name style.');
+  Settings.RoleNameOuterOutlineWidth := 7;
+  Settings.RoleNameOuterOutlineColor := $7FBBDDEE;
+  Colors := Default(TSerifDrawLayerColors);
+  Colors.RoleName := 'Role A';
+  Colors.HasOuterOutlineColor := True;
+  Colors.OuterOutlineColor := $00010203;
+  Settings.SetLayerColors(Colors);
+  Colors.OuterOutlineColor := $CE123456;
+  Settings.SetRoleNameLayerColors(Colors);
+  Require(TSerifDrawSettings.TryDecode(Settings.Encode, Decoded, ErrorText),
+    'Double outline failed to round-trip: ' + ErrorText);
+  Style := Decoded.ResolveStyle(9, 'Role A');
+  Require((Style.OuterOutlineWidth = 14) and Style.HasOuterOutlineColor and
+    (Style.OuterOutlineColor = $00010203),
+    'A transparent per-role outer outline must survive a round-trip.');
+  Style := Decoded.ResolveRoleNameStyle(9, 'Role A');
+  Require((Style.OuterOutlineWidth = 7) and (Style.OuterOutlineColor = $CE123456),
+    'The role name must keep its own width and per-role outer outline color.');
+  Style := Decoded.ResolveRoleNameStyle(9, 'Role B');
+  Require((Style.OuterOutlineWidth = 7) and (Style.OuterOutlineColor = $7FBBDDEE),
+    'An unconfigured role name must use the common outer outline color.');
+  Require(not TSerifDrawSettings.TryDecode('SD7;oow=-1', Decoded, ErrorText),
+    'Negative outer outline widths must be rejected.');
+  Require(not TSerifDrawSettings.TryDecode('SD7;roow=101', Decoded, ErrorText),
+    'Excessive role name outer outline widths must be rejected.');
+  Require(not TSerifDrawSettings.TryDecode('SD7;colors=' + LEGACY_COLORS +
+    ';outercolors=726F6C652061,BAD', Decoded, ErrorText),
+    'Invalid per-role outer outline colors must be rejected.');
+end;
+
 var
   Decoded: TSerifDrawSettings;
   ErrorText: string;
@@ -423,5 +489,6 @@ begin
   Style := Decoded.ResolveStyle(7, 'Role A');
   Require(Style.FillColor = Decoded.FillColor,
     'Removed role did not use the common color.');
+  CheckTextDecoration;
   Writeln('SerifDraw SD7 settings tests passed.');
 end.

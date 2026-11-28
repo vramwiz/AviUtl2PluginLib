@@ -29,6 +29,7 @@ const
   SERIF_PLACEMENT_BOTTOM_RIGHT = 8;
   // 文字の縁・影はフォントサイズ比（%）で保持し、フォント変更時も見た目の比率を保つ。
   SERIF_TEXT_OUTLINE_WIDTH_MAX_PERCENT = 100.0;
+  SERIF_TEXT_OUTER_OUTLINE_WIDTH_MAX_PERCENT = 100;
   SERIF_TEXT_OUTLINE_BLUR_MAX_PERCENT = 20.0;
   SERIF_TEXT_SHADOW_BLUR_MAX_PERCENT = 20.0;
   SERIF_TEXT_SHADOW_OFFSET_MAX_PERCENT = 60.0;
@@ -41,6 +42,9 @@ const
   SERIF_TEXT_SHADOW_SPREAD_MAX_PIXELS = 60.0;
 
 type
+  TSerifDrawTextDecorationPreset = (sdpStandard, sdpDoubleOutline,
+    sdpYellowCaption, sdpSoftShadow, sdpCyanGlow, sdpPlain);
+
   // 配役ごとに独立して保持するのは色だけとする。
   // 配置・寸法・フォント・装飾形状はTSerifDrawSettingsの共通値を使う。
   TSerifDrawLayerColors = record
@@ -51,6 +55,9 @@ type
     // Layerは編集画面の選択情報で、保存・検索キーには使用しない。
     Layer: Integer;
     OutlineColor: Cardinal;
+    // 未指定時は共通の外フチ色を継承する。
+    HasOuterOutlineColor: Boolean;
+    OuterOutlineColor: Cardinal;
     ShadowColor: Cardinal;
   end;
 
@@ -70,12 +77,18 @@ type
     OutlineBlur: Double;
     OutlineEnabled: Boolean;
     OutlineWidth: Double;
+    HasOuterOutlineColor: Boolean;
+    OuterOutlineColor: Cardinal;
+    // 内フチに加える外フチの幅。0は外フチなし。
+    OuterOutlineWidth: Integer;
     ShadowBlur: Double;
     ShadowColor: Cardinal;
     ShadowEnabled: Boolean;
     ShadowOffsetX: Double;
     ShadowOffsetY: Double;
     ShadowSpread: Double;
+    // 装飾と色だけに組み込みプリセットを適用する。
+    procedure ApplyDecorationPreset(const APreset: TSerifDrawTextDecorationPreset);
   end;
 
   // 共通枠またはレイヤー別枠として編集・描画する一式。
@@ -185,6 +198,8 @@ type
     OutlineBlur: Double;
     OutlineEnabled: Boolean;
     OutlineWidth: Double;
+    OuterOutlineColor: Cardinal;
+    OuterOutlineWidth: Integer;
     Placement: Byte;
     PositionX: Double;
     PositionY: Double;
@@ -205,6 +220,8 @@ type
     RoleNameOutlineColor: Cardinal;
     RoleNameOutlineEnabled: Boolean;
     RoleNameOutlineWidth: Double;
+    RoleNameOuterOutlineColor: Cardinal;
+    RoleNameOuterOutlineWidth: Integer;
     RoleNameShadowBlur: Double;
     RoleNameShadowColor: Cardinal;
     RoleNameShadowEnabled: Boolean;
@@ -246,6 +263,9 @@ type
     // 継承解決後の枠へ指定配役の色を描画時だけ合成する。
     function ResolveFrameAppearance(const ALayer: Integer;
       const ARoleName: string): TSerifDrawFrameStyle;
+    // 編集対象の共通装飾形状を更新する。色差分は呼び出し側で更新する。
+    procedure SetTextDecorationShape(const AStyle: TSerifDrawLayerStyle;
+      const AForRoleName: Boolean);
     // 枠スタイルを共通枠の各保存フィールドへ反映する。
     procedure SetCommonFrameStyle(const AStyle: TSerifDrawFrameStyle);
     // RoleNameをキーにキャラ別枠を追加または置換する。空の配役名は無視する。
@@ -413,6 +433,62 @@ begin
   Result := TryStrToInt(AText, Value) and (Value in [0, 1]);
   if Result then
     AValue := Value <> 0;
+end;
+
+function EncodeLayerColors(const AColors: TSerifDrawLayerColors): string;
+begin
+  Result := EncodeTextHex(AColors.RoleName) + ',' +
+    IntToHex(AColors.FillColor, 8) + ',' +
+    IntToHex(AColors.OutlineColor, 8) + ',' +
+    IntToHex(AColors.ShadowColor, 8) + ',' +
+    IntToHex(AColors.BlurColor, 8);
+end;
+
+function EncodeOuterOutlineColors(const AColors: TArray<TSerifDrawLayerColors>): string;
+var
+  Colors: TSerifDrawLayerColors;
+begin
+  Result := '';
+  for Colors in AColors do
+    if Colors.HasOuterOutlineColor then
+    begin
+      if Result <> '' then
+        Result := Result + '/';
+      Result := Result + EncodeTextHex(Colors.RoleName) + ',' +
+        IntToHex(Colors.OuterOutlineColor, 8);
+    end;
+end;
+
+function TryApplyOuterOutlineColors(const AText: string;
+  var AColors: TArray<TSerifDrawLayerColors>): Boolean;
+var
+  Color: Cardinal;
+  Entry: string;
+  Fields: TArray<string>;
+  I: Integer;
+  RoleName: string;
+begin
+  if AText = '' then
+    Exit(True);
+  for Entry in AText.Split(['/']) do
+  begin
+    Fields := Entry.Split([',']);
+    if (Length(Fields) <> 2) or
+      not TryDecodeTextHex(Fields[0], RoleName) or
+      not TryParseColor(Fields[1], Color) then
+      Exit(False);
+    RoleName := SerifDrawRoleNameKey(RoleName);
+    if RoleName = '' then
+      Exit(False);
+    for I := 0 to High(AColors) do
+      if AColors[I].RoleName = RoleName then
+      begin
+        AColors[I].HasOuterOutlineColor := True;
+        AColors[I].OuterOutlineColor := Color;
+        Break;
+      end;
+  end;
+  Result := True;
 end;
 
 function TryParseLayerColors(const AText: string;
@@ -662,6 +738,64 @@ begin
     (Cardinal(G) shl 8) or Cardinal(B);
 end;
 
+procedure TSerifDrawLayerStyle.ApplyDecorationPreset(
+  const APreset: TSerifDrawTextDecorationPreset);
+begin
+  FillColor := $FFFFFFFF;
+  OutlineEnabled := True;
+  OutlineWidth := 30;
+  OutlineColor := $FF000000;
+  OutlineBlur := 0;
+  BlurColor := $FF000000;
+  OuterOutlineWidth := 0;
+  OuterOutlineColor := $FFFFFFFF;
+  HasOuterOutlineColor := True;
+  ShadowEnabled := False;
+  ShadowBlur := 8;
+  ShadowColor := $A0000000;
+  ShadowOffsetX := 20;
+  ShadowOffsetY := 20;
+  ShadowSpread := 0;
+
+  case APreset of
+    sdpDoubleOutline:
+      begin
+        OutlineWidth := 22;
+        OuterOutlineWidth := 14;
+      end;
+    sdpYellowCaption:
+      begin
+        FillColor := $FFFFE16A;
+        OutlineWidth := 26;
+        OutlineColor := $FF2B1A11;
+        OuterOutlineWidth := 10;
+        ShadowEnabled := True;
+        ShadowBlur := 4;
+        ShadowOffsetX := 8;
+        ShadowOffsetY := 12;
+      end;
+    sdpSoftShadow:
+      begin
+        OutlineEnabled := False;
+        ShadowEnabled := True;
+        ShadowBlur := 10;
+        ShadowOffsetX := 4;
+        ShadowOffsetY := 12;
+        ShadowSpread := 8;
+      end;
+    sdpCyanGlow:
+      begin
+        FillColor := $FFEAFBFF;
+        OutlineWidth := 16;
+        OutlineColor := $FF12677C;
+        OutlineBlur := 10;
+        BlurColor := $D944DFFF;
+      end;
+    sdpPlain:
+      OutlineEnabled := False;
+  end;
+end;
+
 { TSerifDrawSettings }
 
 class function TSerifDrawSettings.Default: TSerifDrawSettings;
@@ -715,6 +849,7 @@ begin
   Result.OutlineWidth := 30.0;
   Result.FillColor := $FFFFFFFF;
   Result.OutlineColor := $FF000000;
+  Result.OuterOutlineColor := $FFFFFFFF;
   Result.BlurColor := $FF000000;
   Result.Placement := SERIF_PLACEMENT_CENTER;
   Result.PositionX := 0.0;
@@ -733,6 +868,7 @@ begin
   Result.RoleNameOutlineWidth := Result.OutlineWidth;
   Result.RoleNameFillColor := $FFFFFFFF;
   Result.RoleNameOutlineColor := $FF000000;
+  Result.RoleNameOuterOutlineColor := $FFFFFFFF;
   Result.RoleNameBlurColor := $FF000000;
   Result.ShadowEnabled := False;
   Result.ShadowOffsetX := 20;
@@ -801,6 +937,8 @@ begin
     ';oe=' + IntToStr(Ord(OutlineEnabled)) +
     ';fc=' + IntToHex(FillColor, 8) +
     ';oc=' + IntToHex(OutlineColor, 8) +
+    ';oow=' + IntToStr(OuterOutlineWidth) +
+    ';ooc=' + IntToHex(OuterOutlineColor, 8) +
     ';bc=' + IntToHex(BlurColor, 8) +
     ';fn=' + EncodeTextHex(FontName) +
     ';st=' + IntToStr(FontStyles) +
@@ -825,6 +963,8 @@ begin
     ';roe=' + IntToStr(Ord(RoleNameOutlineEnabled)) +
     ';rfc=' + IntToHex(RoleNameFillColor, 8) +
     ';roc=' + IntToHex(RoleNameOutlineColor, 8) +
+    ';roow=' + IntToStr(RoleNameOuterOutlineWidth) +
+    ';rooc=' + IntToHex(RoleNameOuterOutlineColor, 8) +
     ';rbc=' + IntToHex(RoleNameBlurColor, 8) +
     ';rfn=' + EncodeTextHex(RoleNameFontName) +
     ';rst=' + IntToStr(RoleNameFontStyles) +
@@ -878,11 +1018,7 @@ begin
   begin
     if I > 0 then
       Result := Result + '/';
-    Result := Result + EncodeTextHex(LayerColors[I].RoleName) + ',' +
-      IntToHex(LayerColors[I].FillColor, 8) + ',' +
-      IntToHex(LayerColors[I].OutlineColor, 8) + ',' +
-      IntToHex(LayerColors[I].ShadowColor, 8) + ',' +
-      IntToHex(LayerColors[I].BlurColor, 8);
+    Result := Result + EncodeLayerColors(LayerColors[I]);
   end;
   Result := Result + ';frames=';
   for I := 0 to High(LayerFrames) do
@@ -932,12 +1068,11 @@ begin
   begin
     if I > 0 then
       Result := Result + '/';
-    Result := Result + EncodeTextHex(RoleNameLayerColors[I].RoleName) + ',' +
-      IntToHex(RoleNameLayerColors[I].FillColor, 8) + ',' +
-      IntToHex(RoleNameLayerColors[I].OutlineColor, 8) + ',' +
-      IntToHex(RoleNameLayerColors[I].ShadowColor, 8) + ',' +
-      IntToHex(RoleNameLayerColors[I].BlurColor, 8);
+    Result := Result + EncodeLayerColors(RoleNameLayerColors[I]);
   end;
+  // 旧版も配役色を読めるよう、外フチ色は独立した追加項目に保存する。
+  Result := Result + ';outercolors=' + EncodeOuterOutlineColors(LayerColors) +
+    ';roleoutercolors=' + EncodeOuterOutlineColors(RoleNameLayerColors);
 end;
 
 function TSerifDrawSettings.ResolveStyle(
@@ -958,6 +1093,9 @@ begin
   Result.OutlineWidth := OutlineWidth;
   Result.FillColor := FillColor;
   Result.OutlineColor := OutlineColor;
+  Result.OuterOutlineWidth := OuterOutlineWidth;
+  Result.OuterOutlineColor := OuterOutlineColor;
+  Result.HasOuterOutlineColor := False;
   Result.BlurColor := BlurColor;
   Result.ShadowEnabled := ShadowEnabled;
   Result.ShadowOffsetX := ShadowOffsetX;
@@ -971,6 +1109,9 @@ begin
     begin
       Result.FillColor := Colors.FillColor;
       Result.OutlineColor := Colors.OutlineColor;
+      Result.HasOuterOutlineColor := Colors.HasOuterOutlineColor;
+      if Colors.HasOuterOutlineColor then
+        Result.OuterOutlineColor := Colors.OuterOutlineColor;
       Result.ShadowColor := Colors.ShadowColor;
       Result.BlurColor := Colors.BlurColor;
       Exit;
@@ -995,6 +1136,9 @@ begin
   Result.OutlineWidth := RoleNameOutlineWidth;
   Result.FillColor := RoleNameFillColor;
   Result.OutlineColor := RoleNameOutlineColor;
+  Result.OuterOutlineWidth := RoleNameOuterOutlineWidth;
+  Result.OuterOutlineColor := RoleNameOuterOutlineColor;
+  Result.HasOuterOutlineColor := False;
   Result.BlurColor := RoleNameBlurColor;
   Result.ShadowEnabled := RoleNameShadowEnabled;
   Result.ShadowOffsetX := RoleNameShadowOffsetX;
@@ -1008,6 +1152,9 @@ begin
     begin
       Result.FillColor := Colors.FillColor;
       Result.OutlineColor := Colors.OutlineColor;
+      Result.HasOuterOutlineColor := Colors.HasOuterOutlineColor;
+      if Colors.HasOuterOutlineColor then
+        Result.OuterOutlineColor := Colors.OuterOutlineColor;
       Result.ShadowColor := Colors.ShadowColor;
       Result.BlurColor := Colors.BlurColor;
       Exit;
@@ -1078,6 +1225,35 @@ begin
     Result.OutlineColor := WithAccentRgb(Result.OutlineColor);
     Result.InnerOutlineColor := WithAccentRgb(Result.InnerOutlineColor);
     Result.ShadowColor := WithAccentRgb(Result.ShadowColor);
+  end;
+end;
+
+procedure TSerifDrawSettings.SetTextDecorationShape(
+  const AStyle: TSerifDrawLayerStyle; const AForRoleName: Boolean);
+begin
+  if AForRoleName then
+  begin
+    RoleNameOutlineEnabled := AStyle.OutlineEnabled;
+    RoleNameOutlineWidth := AStyle.OutlineWidth;
+    RoleNameOutlineBlur := AStyle.OutlineBlur;
+    RoleNameOuterOutlineWidth := AStyle.OuterOutlineWidth;
+    RoleNameShadowEnabled := AStyle.ShadowEnabled;
+    RoleNameShadowBlur := AStyle.ShadowBlur;
+    RoleNameShadowOffsetX := AStyle.ShadowOffsetX;
+    RoleNameShadowOffsetY := AStyle.ShadowOffsetY;
+    RoleNameShadowSpread := AStyle.ShadowSpread;
+  end
+  else
+  begin
+    OutlineEnabled := AStyle.OutlineEnabled;
+    OutlineWidth := AStyle.OutlineWidth;
+    OutlineBlur := AStyle.OutlineBlur;
+    OuterOutlineWidth := AStyle.OuterOutlineWidth;
+    ShadowEnabled := AStyle.ShadowEnabled;
+    ShadowBlur := AStyle.ShadowBlur;
+    ShadowOffsetX := AStyle.ShadowOffsetX;
+    ShadowOffsetY := AStyle.ShadowOffsetY;
+    ShadowSpread := AStyle.ShadowSpread;
   end;
 end;
 
@@ -1263,8 +1439,10 @@ var
   LayerItems: TStringList;
   LayerColor: TSerifDrawLayerColors;
   OpacityValue: Integer;
+  OuterOutlineColors: string;
   Parts: TStringList;
   PlacementValue: Integer;
+  RoleNameOuterOutlineColors: string;
   Separator: Integer;
   ShadowEnabledValue: Integer;
   Value: string;
@@ -1311,6 +1489,22 @@ begin
         if not TryStrToFloat(Value, ASettings.OutlineWidth, FS) then
         begin
           AError := 'Invalid outline width.';
+          Exit(False);
+        end;
+      end
+      else if Key = 'oow' then
+      begin
+        if not TryStrToInt(Value, ASettings.OuterOutlineWidth) then
+        begin
+          AError := 'Invalid outer outline width.';
+          Exit(False);
+        end;
+      end
+      else if Key = 'ooc' then
+      begin
+        if not TryParseColor(Value, ASettings.OuterOutlineColor) then
+        begin
+          AError := 'Invalid outer outline color.';
           Exit(False);
         end;
       end
@@ -1524,6 +1718,22 @@ begin
         HasRoleNameStyle := True;
         if not TryStrToFloat(Value, ASettings.RoleNameOutlineWidth, FS) then
           Exit(False);
+      end
+      else if Key = 'roow' then
+      begin
+        if not TryStrToInt(Value, ASettings.RoleNameOuterOutlineWidth) then
+        begin
+          AError := 'Invalid role name outer outline width.';
+          Exit(False);
+        end;
+      end
+      else if Key = 'rooc' then
+      begin
+        if not TryParseColor(Value, ASettings.RoleNameOuterOutlineColor) then
+        begin
+          AError := 'Invalid role name outer outline color.';
+          Exit(False);
+        end;
       end
       else if Key = 'rob' then
       begin
@@ -1935,6 +2145,10 @@ begin
         AError := 'Invalid frame shadow color.';
         Exit(False);
       end
+      else if Key = 'outercolors' then
+        OuterOutlineColors := Value
+      else if Key = 'roleoutercolors' then
+        RoleNameOuterOutlineColors := Value
       else if (Key = 'colors') and (Value <> '') then
       begin
         LayerItems := TStringList.Create;
@@ -1996,6 +2210,12 @@ begin
         end;
       end;
     end;
+    if not TryApplyOuterOutlineColors(OuterOutlineColors, ASettings.LayerColors) or
+      not TryApplyOuterOutlineColors(RoleNameOuterOutlineColors, ASettings.RoleNameLayerColors) then
+    begin
+      AError := 'Invalid per-role outer outline colors.';
+      Exit(False);
+    end;
     if not HasBlurColor then
       ASettings.BlurColor := ASettings.OutlineColor;
     if not HasFrameInnerOutlineColor then
@@ -2013,6 +2233,8 @@ begin
     Result := (ASettings.FontSize >= 1) and (ASettings.FontSize <= 2000) and
       (ASettings.OutlineWidth >= 0) and
       (ASettings.OutlineWidth <= SERIF_TEXT_OUTLINE_WIDTH_MAX_PERCENT) and
+      (ASettings.OuterOutlineWidth >= 0) and
+      (ASettings.OuterOutlineWidth <= SERIF_TEXT_OUTER_OUTLINE_WIDTH_MAX_PERCENT) and
       (ASettings.OutlineBlur >= 0) and
       (ASettings.OutlineBlur <= SERIF_TEXT_OUTLINE_BLUR_MAX_PERCENT) and
       (ASettings.FontName <> '') and (Length(ASettings.FontName) <= 128) and
@@ -2046,6 +2268,8 @@ begin
       (ASettings.RoleNameOutlineWidth >= 0) and
       (ASettings.RoleNameOutlineWidth <=
         SERIF_TEXT_OUTLINE_WIDTH_MAX_PERCENT) and
+      (ASettings.RoleNameOuterOutlineWidth >= 0) and
+      (ASettings.RoleNameOuterOutlineWidth <= SERIF_TEXT_OUTER_OUTLINE_WIDTH_MAX_PERCENT) and
       (ASettings.RoleNameOutlineBlur >= 0) and
       (ASettings.RoleNameOutlineBlur <=
         SERIF_TEXT_OUTLINE_BLUR_MAX_PERCENT) and

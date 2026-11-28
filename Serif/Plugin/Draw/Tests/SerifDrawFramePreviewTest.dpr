@@ -95,6 +95,8 @@ begin
     'Outline blur handle layout mismatch.');
   Require(TextLayout.OutlineWidthRect = Rect(312, 60, 340, 88),
     'Outline width handle layout mismatch.');
+  Require(TextLayout.OuterOutlineWidthRect = Rect(312, 20, 340, 48),
+    'Outer outline handle must be above the inner outline at zero width.');
   Require(TextLayout.ShadowBlurRect = Rect(312, 252, 340, 280),
     'Shadow blur handle layout mismatch.');
   Require(TextLayout.ShadowOffsetRect = Rect(312, 212, 340, 240),
@@ -103,6 +105,7 @@ begin
     'Shadow spread handle layout mismatch.');
   TextStyle.OutlineBlur := 30;
   TextStyle.OutlineWidth := 80;
+  TextStyle.OuterOutlineWidth := 49;
   TextStyle.ShadowBlur := 50;
   TextStyle.ShadowOffsetX := 60;
   TextStyle.ShadowOffsetY := -60;
@@ -113,6 +116,7 @@ begin
   Require((TextLayoutChanged.OutlineBlurRect =
     TextLayout.OutlineBlurRect) and
     (TextLayoutChanged.OutlineWidthRect = TextLayout.OutlineWidthRect) and
+    (TextLayoutChanged.OuterOutlineWidthRect = TextLayout.OuterOutlineWidthRect) and
     (TextLayoutChanged.ShadowBlurRect = TextLayout.ShadowBlurRect) and
     (TextLayoutChanged.ShadowOffsetRect = TextLayout.ShadowOffsetRect) and
     (TextLayoutChanged.ShadowSpreadRect = TextLayout.ShadowSpreadRect),
@@ -132,11 +136,14 @@ begin
     'Related decoration handles must align horizontally or vertically.');
   Require(SerifDrawHitTestTextPreview(Point(366, 74), TextLayout, 96) =
     spdmOutlineBlur, 'Outline blur handle hit test mismatch.');
+  Require(SerifDrawHitTestTextPreview(TextLayout.OuterOutlineWidthRect.CenterPoint,
+    TextLayout, 96) = spdmOuterOutlineWidth, 'Outer outline handle hit test mismatch.');
   Require(SerifDrawHitTestTextPreview(Point(100, 100), TextLayout, 96) =
     spdmFontSizeNorthWest, 'North-west handle hit test mismatch.');
   Require(SerifDrawTextPreviewCursor(spdmShadowSpread) = crSizeNWSE,
     'Shadow spread cursor mismatch.');
   Require((SerifDrawTextPreviewCursor(spdmOutlineWidth) = crSizeNESW) and
+    (SerifDrawTextPreviewCursor(spdmOuterOutlineWidth) = crSizeNESW) and
     (SerifDrawTextPreviewCursor(spdmOutlineBlur) = crSizeNESW),
     'Upper-right decoration cursors must point south-west/north-east.');
   Require((SerifDrawTextPreviewCursor(spdmShadowBlur) = crSizeNWSE) and
@@ -148,6 +155,7 @@ begin
   TextDragStart.FontSize := 40;
   TextDragStart.OutlineBlur := 30;
   TextDragStart.OutlineWidth := 10;
+  TextDragStart.OuterOutlineWidth := 30;
   TextDragStart.ShadowBlur := 10;
   TextDragStart.ShadowOffsetX := 5;
   TextDragStart.ShadowOffsetY := -5;
@@ -162,6 +170,14 @@ begin
     TextDragStart, Point(120, 80), 2.0, False, False, False, 0);
   Require(Abs(TextDragResult.OutlineWidth - 35) < 0.001,
     'Upper-right outward drag must increase outline width.');
+  TextDragResult := SerifDrawCalculateTextDrag(spdmOuterOutlineWidth,
+    TextDragStart, Point(120, 80), 2.0, False, False, False, 0);
+  Require((Abs(TextDragResult.OuterOutlineWidth - 55) < 0.001) and
+    (TextDragResult.OutlineWidth = 10), 'Dragging the outer outline must widen only the outer stroke.');
+  TextDragResult := SerifDrawCalculateTextDrag(spdmOuterOutlineWidth,
+    TextDragStart, Point(80, 120), 2.0, False, False, False, 0);
+  Require(Abs(TextDragResult.OuterOutlineWidth - 5) < 0.001,
+    'Dragging the outer outline inward must narrow it.');
   TextDragResult := SerifDrawCalculateTextDrag(spdmOutlineBlur,
     TextDragStart, Point(80, 120), 2.0, False, False, False, 0);
   Require(Abs(TextDragResult.OutlineBlur - 5) < 0.001,
@@ -389,6 +405,7 @@ begin
     TextHandleState.LayoutRect := Rect(50, 50, 180, 140);
     TextHandleState.OutlineBlurRect := Rect(10, 10, 40, 40);
     TextHandleState.OutlineWidthRect := Rect(200, 20, 240, 60);
+    TextHandleState.OuterOutlineWidthRect := Rect(250, 20, 290, 60);
     TextHandleState.ShadowBlurRect := Rect(10, 160, 50, 200);
     TextHandleState.ShadowOffsetRect := Rect(200, 160, 240, 200);
     TextHandleState.ShadowSpreadRect := Rect(260, 160, 300, 200);
@@ -398,6 +415,11 @@ begin
       'Text preview selection guide was not drawn.');
     Require(Bitmap.Canvas.Pixels[200, 40] = clAqua,
       'Active text decoration handle was not highlighted.');
+    TextHandleState.ActiveHandle := sdthOuterOutlineWidth;
+    DrawSerifDrawTextPreviewHandles(Bitmap.Canvas, TextHandleState);
+    Require((Bitmap.Canvas.Pixels[250, 40] = clAqua) and
+      (Bitmap.Canvas.Pixels[200, 40] = TColor($00D0D0D0)),
+      'The outer outline handle must highlight independently of the inner handle.');
   finally
     Bitmap.Free;
   end;

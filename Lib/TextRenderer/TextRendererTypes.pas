@@ -99,7 +99,46 @@ type
     property Width: Integer read GetWidth;
   end;
 
+// ストレートアルファのRGBAを合成し、不透明度の丸めは最後に適用する。
+procedure BlendStraightAlpha(const ASource: TTextRenderPixel;
+  var ADestination: TTextRenderPixel);
+
 implementation
+
+procedure BlendStraightAlpha(const ASource: TTextRenderPixel;
+  var ADestination: TTextRenderPixel);
+var
+  AlphaDenominator: Cardinal;
+  DestinationAlpha: Cardinal;
+  SourceAlpha: Cardinal;
+begin
+  SourceAlpha := ASource.A;
+  if SourceAlpha = 0 then
+    Exit;
+  if SourceAlpha = 255 then
+  begin
+    ADestination := ASource;
+    Exit;
+  end;
+  DestinationAlpha := ADestination.A;
+  AlphaDenominator := SourceAlpha * 255 +
+    DestinationAlpha * (255 - SourceAlpha);
+  if AlphaDenominator = 0 then
+  begin
+    ADestination := System.Default(TTextRenderPixel);
+    Exit;
+  end;
+  ADestination.R := (Cardinal(ASource.R) * SourceAlpha * 255 +
+    Cardinal(ADestination.R) * DestinationAlpha * (255 - SourceAlpha) +
+    AlphaDenominator div 2) div AlphaDenominator;
+  ADestination.G := (Cardinal(ASource.G) * SourceAlpha * 255 +
+    Cardinal(ADestination.G) * DestinationAlpha * (255 - SourceAlpha) +
+    AlphaDenominator div 2) div AlphaDenominator;
+  ADestination.B := (Cardinal(ASource.B) * SourceAlpha * 255 +
+    Cardinal(ADestination.B) * DestinationAlpha * (255 - SourceAlpha) +
+    AlphaDenominator div 2) div AlphaDenominator;
+  ADestination.A := (AlphaDenominator + 127) div 255;
+end;
 
 { TTextRenderOutline }
 

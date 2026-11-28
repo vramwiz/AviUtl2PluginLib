@@ -27,7 +27,8 @@ type
     spdmOutlineWidth,
     spdmOutlineBlur,
     spdmShadowBlur,
-    spdmShadowSpread
+    spdmShadowSpread,
+    spdmOuterOutlineWidth
   );
 
   TSerifDrawTextPreviewLayout = record
@@ -37,6 +38,7 @@ type
     // 各装飾ハンドルの表示・ヒットテスト矩形。空矩形は非表示を表す。
     OutlineBlurRect: TRect;
     OutlineWidthRect: TRect;
+    OuterOutlineWidthRect: TRect;
     ShadowBlurRect: TRect;
     ShadowOffsetRect: TRect;
     ShadowSpreadRect: TRect;
@@ -220,6 +222,15 @@ begin
   Result.OutlineBlurRect := AvoidHandleOverlap(Result.OutlineBlurRect,
     ALayoutRect, AClientRect, [Result.OutlineWidthRect], ADpi);
 
+  // 外フチは内フチの上に置き、縁ぼかしとの位置関係を保つ。
+  CenterX := Result.OutlineWidthRect.CenterPoint.X;
+  CenterY := Result.OutlineWidthRect.Top - Gap - Extent div 2;
+  Result.OuterOutlineWidthRect := HandleRect(CenterX, CenterY, Extent);
+  Result.OuterOutlineWidthRect := ConstrainHandleRect(Result.OuterOutlineWidthRect,
+    ALayoutRect, AClientRect, False, False, Gap, ADpi);
+  Result.OuterOutlineWidthRect := AvoidHandleOverlap(Result.OuterOutlineWidthRect,
+    ALayoutRect, AClientRect, [Result.OutlineWidthRect, Result.OutlineBlurRect], ADpi);
+
   // 影位置を親とし、ぼかしを下、広がりを右へまとめる。
   // 操作中にアイコンが逃げないよう、影位置値自体は配置に使わない。
   CenterX := ALayoutRect.Right + Gap + Extent div 2;
@@ -229,7 +240,7 @@ begin
     ALayoutRect, AClientRect, False, True, Gap, ADpi);
   Result.ShadowOffsetRect := AvoidHandleOverlap(Result.ShadowOffsetRect,
     ALayoutRect, AClientRect,
-    [Result.OutlineWidthRect, Result.OutlineBlurRect], ADpi);
+    [Result.OutlineWidthRect, Result.OutlineBlurRect, Result.OuterOutlineWidthRect], ADpi);
 
   CenterX := (Result.ShadowOffsetRect.Left +
     Result.ShadowOffsetRect.Right) div 2;
@@ -239,7 +250,7 @@ begin
     ALayoutRect, AClientRect, False, True, Gap, ADpi);
   Result.ShadowBlurRect := AvoidHandleOverlap(Result.ShadowBlurRect,
     ALayoutRect, AClientRect, [Result.OutlineWidthRect,
-    Result.OutlineBlurRect, Result.ShadowOffsetRect], ADpi);
+    Result.OutlineBlurRect, Result.OuterOutlineWidthRect, Result.ShadowOffsetRect], ADpi);
 
   CenterX := Result.ShadowOffsetRect.Right + Gap + Extent div 2;
   CenterY := (Result.ShadowOffsetRect.Top +
@@ -249,8 +260,8 @@ begin
     ALayoutRect, AClientRect, False, True, Gap, ADpi);
   Result.ShadowSpreadRect := AvoidHandleOverlap(Result.ShadowSpreadRect,
     ALayoutRect, AClientRect, [Result.OutlineWidthRect,
-    Result.OutlineBlurRect, Result.ShadowBlurRect,
-    Result.ShadowOffsetRect], ADpi);
+    Result.OutlineBlurRect, Result.OuterOutlineWidthRect,
+    Result.ShadowBlurRect, Result.ShadowOffsetRect], ADpi);
 end;
 
 function SerifDrawHitTestTextPreview(const APoint: TPoint;
@@ -274,6 +285,8 @@ begin
     Exit(spdmOutlineBlur);
   if PtInRect(ALayout.OutlineWidthRect, APoint) then
     Exit(spdmOutlineWidth);
+  if PtInRect(ALayout.OuterOutlineWidthRect, APoint) then
+    Exit(spdmOuterOutlineWidth);
   if PtInRect(ALayout.ShadowBlurRect, APoint) then
     Exit(spdmShadowBlur);
   if PtInRect(ALayout.ShadowSpreadRect, APoint) then
@@ -320,7 +333,7 @@ begin
     spdmShadowBlur:
       Result := crSizeNWSE;
     spdmFontSizeNorthEast, spdmFontSizeSouthWest, spdmOutlineWidth,
-    spdmOutlineBlur:
+    spdmOuterOutlineWidth, spdmOutlineBlur:
       Result := crSizeNESW;
     spdmLetterSpacingWest, spdmLetterSpacingEast:
       Result := crSizeWE;

@@ -18,6 +18,7 @@ type
     LineSpacing: Double;
     OutlineBlur: Double;
     OutlineWidth: Double;
+    OuterOutlineWidth: Double;
     PositionX: Double;
     PositionY: Double;
     ShadowBlur: Double;
@@ -33,6 +34,7 @@ type
     LineSpacing: Double;
     OutlineBlur: Double;
     OutlineWidth: Double;
+    OuterOutlineWidth: Double;
     PositionX: Double;
     PositionY: Double;
     ShadowBlur: Double;
@@ -66,6 +68,7 @@ var
   CaptureTolerance: Double;
   ReleaseTolerance: Double;
   RoundedY: Double;
+  OutlineDelta: Double;
 begin
   Result := System.Default(TSerifDrawTextDragResult);
   Result.FontSize := AStart.FontSize;
@@ -73,6 +76,7 @@ begin
   Result.LineSpacing := AStart.LineSpacing;
   Result.OutlineBlur := AStart.OutlineBlur;
   Result.OutlineWidth := AStart.OutlineWidth;
+  Result.OuterOutlineWidth := AStart.OuterOutlineWidth;
   Result.PositionX := AStart.PositionX;
   Result.PositionY := AStart.PositionY;
   Result.ShadowBlur := AStart.ShadowBlur;
@@ -123,15 +127,18 @@ begin
           (AMouse.Y - AStart.Mouse.Y) / AScale * 100.0 /
           Max(1.0, AStart.FontSize);
       end;
-    spdmOutlineWidth:
-      // 右上ハンドルは北東へ離すと増え、南西へ近づけると減る。
-      Result.OutlineWidth := AStart.OutlineWidth +
-        (AMouse.X - AStart.Mouse.X - AMouse.Y + AStart.Mouse.Y) /
-        (2 * AScale) * 100.0 / Max(1.0, AStart.FontSize);
-    spdmOutlineBlur:
-      Result.OutlineBlur := AStart.OutlineBlur +
-        (AMouse.X - AStart.Mouse.X - AMouse.Y + AStart.Mouse.Y) /
-        (2 * AScale) * 100.0 / Max(1.0, AStart.FontSize);
+    spdmOutlineWidth, spdmOuterOutlineWidth, spdmOutlineBlur:
+      begin
+        // 縁系のハンドルは北東へ離すと増え、南西へ近づけると減る。
+        OutlineDelta := (AMouse.X - AStart.Mouse.X - AMouse.Y + AStart.Mouse.Y) /
+          (2 * AScale) * 100.0 / Max(1.0, AStart.FontSize);
+        case AMode of
+          spdmOutlineWidth: Result.OutlineWidth := AStart.OutlineWidth + OutlineDelta;
+          spdmOuterOutlineWidth:
+            Result.OuterOutlineWidth := AStart.OuterOutlineWidth + OutlineDelta;
+          spdmOutlineBlur: Result.OutlineBlur := AStart.OutlineBlur + OutlineDelta;
+        end;
+      end;
     spdmShadowBlur:
       // 右下ハンドルは南東へ離すと増え、北西へ近づけると減る。
       Result.ShadowBlur := AStart.ShadowBlur +

@@ -13,6 +13,7 @@ uses
   Vcl.Forms,
   Vcl.Graphics,
   Vcl.StdCtrls,
+  Winapi.Messages,
   FormattingToolbarButtons,
   PluginFilterSerifDrawColorPicker,
   PluginFilterSerifDrawEditorModeControl,
@@ -34,7 +35,8 @@ type
     sctText,
     sctOutline,
     sctShadow,
-    sctBlur
+    sctBlur,
+    sctOuterOutline
   );
 
   // 不透明度トラックで編集する文字装飾の対象。
@@ -42,7 +44,8 @@ type
     sotText,
     sotOutline,
     sotShadow,
-    sotBlur
+    sotBlur,
+    sotOuterOutline
   );
 
   TFormSerifDrawSettings = class(TForm)
@@ -73,8 +76,12 @@ type
     FBackgroundPreview: TBitmap;
     FBackBuffer: TBitmap;
     FColorPicker: TSerifDrawColorPickerControl;
+    FColorPresetComboBox: TComboBox;
+    FColorPresetColors: TArray<TColor>;
+    FColorPresetSearch: TEdit;
     FColorTarget: TSerifDrawColorTarget;
     FColorTargetToolbar: TFormattingToolbarButtons;
+    FDecorationPresetComboBox: TComboBox;
     FDirect2DEnabled: Boolean;
     FDraggingPan: Boolean;
     FDraggingPreview: Boolean;
@@ -111,6 +118,8 @@ type
     FDragStartLineSpacing: Double;
     FDragStartOutlineBlur: Double;
     FDragStartOutlineWidth: Double;
+    FDragStartOuterOutlineWidth: Double;
+    FDragStartTextLayout: TSerifDrawTextPreviewLayout;
     FDragStartPositionX: Double;
     FDragStartPositionY: Double;
     FDragStartShadowOffsetX: Double;
@@ -139,6 +148,7 @@ type
     FPreviewRenderScale: Double;
     FPreviewRenderer: TCustomTextRenderer;
     FPreviewSelected: Boolean;
+    FPreviewWindowProc: TWndMethod;
     FOpacityTrack: TTransparencyTrackControl;
     FOpacityTarget: TSerifDrawOpacityTarget;
     FOpacityTargetToolbar: TFormattingToolbarButtons;
@@ -154,6 +164,7 @@ type
     FToolbarItalic: TFormattingToolbarButton;
     FToolbarOutline: TFormattingToolbarButton;
     FToolbarOutlineColor: TFormattingToolbarButton;
+    FToolbarOuterOutlineColor: TFormattingToolbarButton;
     FToolbarOpacityBlur: TFormattingToolbarButton;
     FToolbarOpacityOutline: TFormattingToolbarButton;
     FToolbarOpacityShadow: TFormattingToolbarButton;
@@ -168,6 +179,7 @@ type
     function BackgroundDestinationRect: TRect;
     procedure EnsureBackgroundPreview(const ADestination: TRect);
     procedure EnsureBackBuffer;
+    procedure CreateDecorationControls;
     procedure CreateFormattingToolbar;
     procedure CreateEditorFrames;
     procedure CreateEditorModeControl;
@@ -219,9 +231,18 @@ type
       const ARoleName: Boolean): Boolean;
     procedure SetEditingPosition(const AX, AY: Double);
     function TextPreviewHandleLayout: TSerifDrawTextPreviewLayout;
+    procedure DrawTextPreviewHandles(const ACanvas: TCanvas);
+    procedure PreviewWindowProc(var AMessage: TMessage);
     function CommitSelectedStyle(out AError: string): Boolean;
     procedure ApplyColorsToSelectedLayer(const AStyle: TSerifDrawLayerStyle);
     procedure LoadSelectedStyle;
+    function SelectedTextStyle: TSerifDrawLayerStyle;
+    procedure DecorationPresetChange(Sender: TObject);
+    procedure ColorPresetChange(Sender: TObject);
+    procedure ColorPresetSearchChange(Sender: TObject);
+    procedure ColorPresetDrawItem(Control: TWinControl;
+      Index: Integer; Rect: TRect; State: TOwnerDrawState);
+    procedure ApplySelectedColor(const AColor: TColor);
     procedure ColorPickerChange(Sender: TObject);
     procedure ColorTargetExecute(Sender: TObject;
       Button: TFormattingToolbarButton);
@@ -238,6 +259,7 @@ type
     procedure UpdateDraggedShadowOffset(const AOffsetX, AOffsetY: Double);
     procedure UpdateDraggedOutlineBlur(const ABlur: Double);
     procedure UpdateDraggedOutlineWidth(const AWidth: Double);
+    procedure UpdateDraggedOuterOutlineWidth(const AWidth: Double);
     procedure UpdateDraggedShadowBlur(const ABlur: Double);
     procedure UpdateDraggedShadowSpread(const ASpread: Double);
     function CreatePreviewBitmap(const AImage: TTextRenderImage):
@@ -280,6 +302,7 @@ uses
   PluginFilterSerifDrawPlacement,
   PluginFilterSerifDrawRoleNames,
   PluginFilterSerifDrawSettingsTheme,
+  PluginFilterSerifDrawSkia,
   PluginFilterSerifDrawTextPreviewHandles,
   TextRendererSkia,
   Vcl.Direct2D,
@@ -293,8 +316,28 @@ uses
 type
   TControlAccess = class(TControl);
 
+{$I ..\..\..\Chara\SerifCharaColors.inc}
+
 const
   PREVIEW_HANDLE_SIZE = 7;
+
+  BASIC_COLOR_PRESETS: array[0..6] of record
+    Caption: string;
+    Rgb: Cardinal;
+  end = (
+    (Caption: '赤'; Rgb: $FF0000),
+    (Caption: '橙'; Rgb: $FF8000),
+    (Caption: '黄'; Rgb: $FFFF00),
+    (Caption: '緑'; Rgb: $00FF00),
+    (Caption: '水色'; Rgb: $00FFFF),
+    (Caption: '青'; Rgb: $0000FF),
+    (Caption: '紫'; Rgb: $8000FF)
+  );
+
+function PresetColor(const ARgb: Cardinal): TColor;
+begin
+  Result := RGB((ARgb shr 16) and $FF, (ARgb shr 8) and $FF, ARgb and $FF);
+end;
 
 procedure TFormSerifDrawSettings.ApplyDarkTheme;
 const
@@ -372,6 +415,57 @@ begin
   FEditorModeControl.OnChange := EditorModeChange;
 end;
 
+procedure TFormSerifDrawSettings.CreateDecorationControls;
+const
+  PRESET_NAMES: array[TSerifDrawTextDecorationPreset] of string = (
+    '白字・黒フチ', '白字・二重フチ（黒＋白）', '黄色テロップ',
+    '白字・やわらかい影', '水色の発光', '白字・装飾なし');
+var
+  Preset: TSerifDrawTextDecorationPreset;
+begin
+  FDecorationPresetComboBox := TComboBox.Create(Self);
+  FDecorationPresetComboBox.Name := 'DecorationPresetComboBox';
+  FDecorationPresetComboBox.Parent := ColorPanel;
+  FDecorationPresetComboBox.Style := csDropDownList;
+  FDecorationPresetComboBox.Color := SERIF_DRAW_CONTROL_COLOR;
+  FDecorationPresetComboBox.Font.Color := SERIF_DRAW_TEXT_COLOR;
+  FDecorationPresetComboBox.StyleElements :=
+    FDecorationPresetComboBox.StyleElements - [seClient];
+  FDecorationPresetComboBox.Hint :=
+    'フチと影の形は共通設定に、色は選択中の配役に適用します';
+  FDecorationPresetComboBox.ShowHint := True;
+  FDecorationPresetComboBox.Items.Add('装飾プリセット');
+  for Preset := Low(TSerifDrawTextDecorationPreset) to High(TSerifDrawTextDecorationPreset) do
+    FDecorationPresetComboBox.Items.Add(PRESET_NAMES[Preset]);
+  FDecorationPresetComboBox.ItemIndex := 0;
+  FDecorationPresetComboBox.OnChange := DecorationPresetChange;
+
+  FColorPresetComboBox := TComboBox.Create(Self);
+  FColorPresetComboBox.Name := 'ColorPresetComboBox';
+  FColorPresetComboBox.Parent := ColorPanel;
+  FColorPresetComboBox.Style := csOwnerDrawFixed;
+  FColorPresetComboBox.Color := SERIF_DRAW_CONTROL_COLOR;
+  FColorPresetComboBox.Font.Color := SERIF_DRAW_TEXT_COLOR;
+  FColorPresetComboBox.StyleElements :=
+    FColorPresetComboBox.StyleElements - [seClient];
+  FColorPresetComboBox.Hint := '選択中の色項目に適用します';
+  FColorPresetComboBox.ShowHint := True;
+  FColorPresetComboBox.DropDownCount := 12;
+  FColorPresetComboBox.OnDrawItem := ColorPresetDrawItem;
+  FColorPresetComboBox.OnChange := ColorPresetChange;
+
+  FColorPresetSearch := TEdit.Create(Self);
+  FColorPresetSearch.Name := 'ColorPresetSearchEdit';
+  FColorPresetSearch.Parent := ColorPanel;
+  FColorPresetSearch.Color := SERIF_DRAW_CONTROL_COLOR;
+  FColorPresetSearch.Font.Color := SERIF_DRAW_TEXT_COLOR;
+  FColorPresetSearch.StyleElements := FColorPresetSearch.StyleElements - [seClient];
+  FColorPresetSearch.Text := '';
+  FColorPresetSearch.TextHint := 'キャラ名で絞り込み';
+  FColorPresetSearch.OnChange := ColorPresetSearchChange;
+  ColorPresetSearchChange(FColorPresetSearch);
+end;
+
 procedure TFormSerifDrawSettings.CreateFormattingToolbar;
 var
   Extent: Integer;
@@ -419,6 +513,7 @@ var
   OpacityTop: Integer;
   PickerHeight: Integer;
   SelectorTop: Integer;
+  SettingsBottom: Integer;
   ToolbarLeft: Integer;
   ToolbarWidth: Integer;
 begin
@@ -429,6 +524,22 @@ begin
     MulDiv(24, CurrentPPI, 96));
   ModePanel.Height := MulDiv(38, CurrentPPI, 96);
   TopPanel.Height := MulDiv(38, CurrentPPI, 96);
+
+  if FColorPresetSearch <> nil then
+  begin
+    FDecorationPresetComboBox.SetBounds(Margin, Margin,
+      ColorPanel.ClientWidth - Margin * 2, FDecorationPresetComboBox.Height);
+    FColorPresetComboBox.ItemHeight := MulDiv(22, CurrentPPI, 96);
+    FColorPresetComboBox.SetBounds(Margin,
+      FDecorationPresetComboBox.Top + FDecorationPresetComboBox.Height + Gap,
+      FDecorationPresetComboBox.Width, FColorPresetComboBox.Height);
+    FColorPresetSearch.SetBounds(Margin,
+      FColorPresetComboBox.Top + FColorPresetComboBox.Height + Gap,
+      FColorPresetComboBox.Width, FColorPresetSearch.Height);
+    SettingsBottom := FColorPresetSearch.Top + FColorPresetSearch.Height;
+    PickerHeight := Max(Extent, Min(PickerHeight, ColorPanel.ClientHeight -
+      SettingsBottom - Margin - Gap * 3 - Extent * 2));
+  end;
 
   if FEditorModeControl <> nil then
   begin
@@ -518,9 +629,12 @@ begin
   FToolbarOpacityText := FToolbarFillColor;
   FToolbarFillColor.HasAccentColor := True;
   FToolbarOutlineColor := FColorTargetToolbar.AddToggleButton(
-    '縁取り色の透明度と色', tbgAfterColor, Ord(sotOutline));
+    '内フチの透明度と色', tbgAfterColor, Ord(sotOutline));
   FToolbarOpacityOutline := FToolbarOutlineColor;
   FToolbarOutlineColor.HasAccentColor := True;
+  FToolbarOuterOutlineColor := FColorTargetToolbar.AddToggleButton(
+    '外フチの透明度と色', tbgOpacityOutline, Ord(sotOuterOutline));
+  FToolbarOuterOutlineColor.HasAccentColor := True;
   FToolbarShadowColor := FColorTargetToolbar.AddToggleButton(
     '影色の透明度と色', tbgShadowColor, Ord(sotShadow));
   FToolbarOpacityShadow := FToolbarShadowColor;
@@ -652,11 +766,15 @@ begin
   DoubleBuffered := True;
   TControlAccess(PreviewPaintBox).ControlStyle :=
     TControlAccess(PreviewPaintBox).ControlStyle + [csOpaque];
+  FPreviewWindowProc := PreviewPaintBox.WindowProc;
+  PreviewPaintBox.WindowProc := PreviewWindowProc;
+  PreviewPaintBox.ShowHint := True;
   FZoomPercent := 100;
   FSelectedSnapshotIndex := -1;
   FColorTarget := sctText;
   FOpacityTarget := sotText;
   CreateEditorModeControl;
+  CreateDecorationControls;
   LoadAvailableFonts;
   CreateColorPicker;
   CreateColorTargetToolbar;
@@ -1287,6 +1405,8 @@ end;
 
 procedure TFormSerifDrawSettings.FormDestroy(Sender: TObject);
 begin
+  if Assigned(FPreviewWindowProc) then
+    PreviewPaintBox.WindowProc := FPreviewWindowProc;
   FPreviewRenderer.Free;
   FCompanionPreviewImage.Free;
   FCompanionPreviewBitmap.Free;
@@ -1382,6 +1502,8 @@ function TFormSerifDrawSettings.CommitSelectedStyle(
   out AError: string): Boolean;
 begin
   AError := '';
+  if IsFrameEditorActive then
+    Exit(True);
   if (Trim(FontComboBox.Text) = '') or
     (Length(Trim(FontComboBox.Text)) > 128) then
   begin
@@ -1427,43 +1549,39 @@ procedure TFormSerifDrawSettings.ApplyColorsToSelectedLayer(
 var
   Colors: TSerifDrawLayerColors;
 begin
-  if IsRoleNameEditorActive then
-  begin
-    if (FSelectedSnapshotIndex >= 0) and
-      (FSelectedSnapshotIndex < Length(FSnapshots)) then
-    begin
-      Colors.Layer := FSnapshots[FSelectedSnapshotIndex].Layer;
-      Colors.RoleName := FSnapshots[FSelectedSnapshotIndex].Chara;
-      Colors.FillColor := AStyle.FillColor;
-      Colors.OutlineColor := AStyle.OutlineColor;
-      Colors.ShadowColor := AStyle.ShadowColor;
-      Colors.BlurColor := AStyle.BlurColor;
-      FSettings.SetRoleNameLayerColors(Colors);
-    end
-    else
-    begin
-      FSettings.RoleNameFillColor := AStyle.FillColor;
-      FSettings.RoleNameOutlineColor := AStyle.OutlineColor;
-      FSettings.RoleNameShadowColor := AStyle.ShadowColor;
-      FSettings.RoleNameBlurColor := AStyle.BlurColor;
-    end;
-    Exit;
-  end;
+  Colors := Default(TSerifDrawLayerColors);
   if (FSelectedSnapshotIndex >= 0) and
     (FSelectedSnapshotIndex < Length(FSnapshots)) then
   begin
     Colors.Layer := FSnapshots[FSelectedSnapshotIndex].Layer;
     Colors.RoleName := FSnapshots[FSelectedSnapshotIndex].Chara;
+  end;
+  if SerifDrawRoleNameKey(Colors.RoleName) <> '' then
+  begin
     Colors.FillColor := AStyle.FillColor;
     Colors.OutlineColor := AStyle.OutlineColor;
+    Colors.HasOuterOutlineColor := AStyle.HasOuterOutlineColor;
+    Colors.OuterOutlineColor := AStyle.OuterOutlineColor;
     Colors.ShadowColor := AStyle.ShadowColor;
     Colors.BlurColor := AStyle.BlurColor;
-    FSettings.SetLayerColors(Colors);
+    if IsRoleNameEditorActive then
+      FSettings.SetRoleNameLayerColors(Colors)
+    else
+      FSettings.SetLayerColors(Colors);
+  end
+  else if IsRoleNameEditorActive then
+  begin
+    FSettings.RoleNameFillColor := AStyle.FillColor;
+    FSettings.RoleNameOutlineColor := AStyle.OutlineColor;
+    FSettings.RoleNameOuterOutlineColor := AStyle.OuterOutlineColor;
+    FSettings.RoleNameShadowColor := AStyle.ShadowColor;
+    FSettings.RoleNameBlurColor := AStyle.BlurColor;
   end
   else
   begin
     FSettings.FillColor := AStyle.FillColor;
     FSettings.OutlineColor := AStyle.OutlineColor;
+    FSettings.OuterOutlineColor := AStyle.OuterOutlineColor;
     FSettings.ShadowColor := AStyle.ShadowColor;
     FSettings.BlurColor := AStyle.BlurColor;
   end;
@@ -1542,32 +1660,38 @@ begin
 end;
 
 procedure TFormSerifDrawSettings.ColorPickerChange(Sender: TObject);
+begin
+  if not FUpdatingControls then
+    ApplySelectedColor(FColorPicker.Color);
+end;
+
+procedure TFormSerifDrawSettings.ApplySelectedColor(const AColor: TColor);
 var
   Argb: Cardinal;
   Color: TColor;
   Style: TSerifDrawLayerStyle;
 begin
-  if FUpdatingControls or (FColorPicker = nil) then
-    Exit;
-  if (FSelectedSnapshotIndex >= 0) and
-    (FSelectedSnapshotIndex < Length(FSnapshots)) then
-    Style := EditingTextStyle(FSnapshots[FSelectedSnapshotIndex].Layer)
-  else
-    Style := EditingTextStyle(-1);
+  Style := SelectedTextStyle;
   Argb := Style.FillColor;
   case FColorTarget of
     sctText: Argb := Style.FillColor;
     sctOutline: Argb := Style.OutlineColor;
+    sctOuterOutline: Argb := Style.OuterOutlineColor;
     sctShadow: Argb := Style.ShadowColor;
     sctBlur: Argb := Style.BlurColor;
   end;
-  Color := ColorToRGB(FColorPicker.Color);
+  Color := ColorToRGB(AColor);
   Argb := (Argb and $FF000000) or
     (Cardinal(GetRValue(Color)) shl 16) or
     (Cardinal(GetGValue(Color)) shl 8) or Cardinal(GetBValue(Color));
   case FColorTarget of
     sctText: Style.FillColor := Argb;
     sctOutline: Style.OutlineColor := Argb;
+    sctOuterOutline:
+      begin
+        Style.OuterOutlineColor := Argb;
+        Style.HasOuterOutlineColor := True;
+      end;
     sctShadow: Style.ShadowColor := Argb;
     sctBlur: Style.BlurColor := Argb;
   end;
@@ -1586,11 +1710,148 @@ begin
   case FOpacityTarget of
     sotText: FColorTarget := sctText;
     sotOutline: FColorTarget := sctOutline;
+    sotOuterOutline: FColorTarget := sctOuterOutline;
     sotShadow: FColorTarget := sctShadow;
     sotBlur: FColorTarget := sctBlur;
   end;
   UpdateTransparencyTracks;
   UpdateColorPicker;
+end;
+
+function TFormSerifDrawSettings.SelectedTextStyle: TSerifDrawLayerStyle;
+begin
+  if (FSelectedSnapshotIndex >= 0) and
+    (FSelectedSnapshotIndex < Length(FSnapshots)) then
+    Result := EditingTextStyle(FSnapshots[FSelectedSnapshotIndex].Layer,
+      FSnapshots[FSelectedSnapshotIndex].Chara)
+  else
+    Result := EditingTextStyle(-1);
+end;
+
+procedure TFormSerifDrawSettings.DecorationPresetChange(Sender: TObject);
+var
+  PresetIndex: Integer;
+  Style: TSerifDrawLayerStyle;
+begin
+  PresetIndex := FDecorationPresetComboBox.ItemIndex - 1;
+  if FUpdatingControls or (PresetIndex < 0) then
+    Exit;
+  Style := SelectedTextStyle;
+  Style.ApplyDecorationPreset(TSerifDrawTextDecorationPreset(PresetIndex));
+  FSettings.SetTextDecorationShape(Style, IsRoleNameEditorActive);
+  ApplyColorsToSelectedLayer(Style);
+  FDecorationPresetComboBox.ItemIndex := 0;
+  LoadSelectedStyle;
+end;
+
+procedure TFormSerifDrawSettings.ColorPresetSearchChange(Sender: TObject);
+var
+  Character: TCharaDef;
+  Count: Integer;
+  I: Integer;
+  Name: string;
+  Query: string;
+  Updating: Boolean;
+
+  procedure AddPreset(const AName: string; const ARgb: Cardinal);
+  begin
+    if FColorPresetComboBox.Items.IndexOf(AName) >= 0 then
+      Exit;
+    FColorPresetColors[Count] := PresetColor(ARgb);
+    FColorPresetComboBox.Items.Add(AName);
+    Inc(Count);
+  end;
+
+begin
+  Query := SerifDrawRoleNameKey(FColorPresetSearch.Text).Replace(' ', '', [rfReplaceAll]);
+  Updating := FUpdatingControls;
+  FUpdatingControls := True;
+  FColorPresetComboBox.Items.BeginUpdate;
+  try
+    FColorPresetComboBox.Items.Clear;
+    SetLength(FColorPresetColors, Length(BASIC_COLOR_PRESETS) + Length(SERIF_CHARA_COLOR_DEFS));
+    Count := 0;
+    if Query = '' then
+      for I := Low(BASIC_COLOR_PRESETS) to High(BASIC_COLOR_PRESETS) do
+        AddPreset(BASIC_COLOR_PRESETS[I].Caption, BASIC_COLOR_PRESETS[I].Rgb);
+    for Character in SERIF_CHARA_COLOR_DEFS do
+    begin
+      Name := Character.Name.Replace('（CeVIO AI）', '').Replace('（COEIROINK）', '')
+        .Replace('（CS）', '（旧版）');
+      // 汎用のナレーター番号はキャラクター色の候補から外す。
+      if (Length(Name) > 3) and CharInSet(Name[3], ['0'..'9']) and
+        ((Copy(Name, 1, 2) = '女性') or (Copy(Name, 1, 2) = '男性')) then
+        Continue;
+      if (Query <> '') and
+        (Pos(Query, SerifDrawRoleNameKey(Name).Replace(' ', '', [rfReplaceAll])) = 0) then
+        Continue;
+      AddPreset(Name, StrToInt('$' + Copy(Character.HexRGB, 2, 6)));
+    end;
+    SetLength(FColorPresetColors, Count);
+    if Query = '' then
+      FColorPresetComboBox.Items.Insert(0, '色プリセット')
+    else if Count = 0 then
+      FColorPresetComboBox.Items.Insert(0, '該当するキャラなし')
+    else
+      FColorPresetComboBox.Items.Insert(0, Format('キャラ色を選択（%d件）', [Count]));
+    FColorPresetComboBox.ItemIndex := 0;
+  finally
+    FColorPresetComboBox.Items.EndUpdate;
+    FUpdatingControls := Updating;
+  end;
+end;
+
+procedure TFormSerifDrawSettings.ColorPresetChange(Sender: TObject);
+var
+  Index: Integer;
+begin
+  Index := FColorPresetComboBox.ItemIndex - 1;
+  if FUpdatingControls or (Index < 0) or (Index >= Length(FColorPresetColors)) then
+    Exit;
+  ApplySelectedColor(FColorPresetColors[Index]);
+  FColorPresetComboBox.ItemIndex := 0;
+end;
+
+procedure TFormSerifDrawSettings.ColorPresetDrawItem(Control: TWinControl;
+  Index: Integer; Rect: TRect; State: TOwnerDrawState);
+var
+  Canvas: TCanvas;
+  Gap: Integer;
+  Size: Integer;
+  Swatch: TRect;
+begin
+  if (Index < 0) or (Index >= FColorPresetComboBox.Items.Count) then
+    Exit;
+  Canvas := FColorPresetComboBox.Canvas;
+  if odSelected in State then
+    Canvas.Brush.Color := clHighlight
+  else
+    Canvas.Brush.Color := SERIF_DRAW_CONTROL_COLOR;
+  Canvas.FillRect(Rect);
+  Gap := MulDiv(5, CurrentPPI, 96);
+  Inc(Rect.Left, Gap);
+  if (Index > 0) and (Index <= Length(FColorPresetColors)) then
+  begin
+    Size := MulDiv(12, CurrentPPI, 96);
+    Swatch.Left := Rect.Left;
+    Swatch.Top := Rect.Top + (Rect.Height - Size) div 2;
+    Swatch.Right := Swatch.Left + Size;
+    Swatch.Bottom := Swatch.Top + Size;
+    Canvas.Brush.Color := FColorPresetColors[Index - 1];
+    Canvas.FillRect(Swatch);
+    Inc(Rect.Left, Size + Gap);
+  end;
+  Canvas.Brush.Style := bsClear;
+  try
+    if odSelected in State then
+      Canvas.Font.Color := clHighlightText
+    else
+      Canvas.Font.Color := SERIF_DRAW_TEXT_COLOR;
+    DrawText(Canvas.Handle, PChar(FColorPresetComboBox.Items[Index]), -1, Rect,
+      DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS);
+  finally
+    Canvas.Brush.Style := bsSolid;
+  end;
 end;
 
 procedure TFormSerifDrawSettings.LoadSelectedStyle;
@@ -1600,21 +1861,11 @@ const
 var
   FontIndex: Integer;
   FontName: string;
-  Snapshot: TSerifDrawSnapshot;
   Style: TSerifDrawLayerStyle;
 begin
   FUpdatingControls := True;
   try
-    if (FSelectedSnapshotIndex >= 0) and
-      (FSelectedSnapshotIndex < Length(FSnapshots)) then
-    begin
-      Snapshot := FSnapshots[FSelectedSnapshotIndex];
-      Style := EditingTextStyle(Snapshot.Layer);
-    end
-    else
-    begin
-      Style := EditingTextStyle(-1);
-    end;
+    Style := SelectedTextStyle;
     FontIndex := FontComboBox.Items.IndexOf(Style.FontName);
     if (FontIndex < 0) and
       TSkiaTextRenderer.IsFontFamilyAvailable(Style.FontName) then
@@ -1687,6 +1938,59 @@ begin
   PreviewPaintBox.Cursor := SerifDrawTextPreviewCursor(AMode);
 end;
 
+procedure TFormSerifDrawSettings.PreviewWindowProc(var AMessage: TMessage);
+var
+  HintInfo: Vcl.Controls.PHintInfo;
+  Layout: TSerifDrawTextPreviewLayout;
+begin
+  FPreviewWindowProc(AMessage);
+  if AMessage.Msg <> CM_HINTSHOW then
+    Exit;
+  AMessage.Result := 1;
+  if IsFrameEditorActive or not FPreviewSelected or FDraggingPreview or FDraggingPan or
+    (IsRoleNameEditorActive and not FSettings.RoleNameVisible) then
+    Exit;
+  HintInfo := TCMHintShow(AMessage).HintInfo;
+  Layout := TextPreviewHandleLayout;
+  case SerifDrawHitTestTextPreview(HintInfo^.CursorPos, Layout, CurrentPPI) of
+    spdmOutlineWidth:
+      begin
+        HintInfo^.CursorRect := Layout.OutlineWidthRect;
+        HintInfo^.HintStr := Format('内フチ幅 %s%%。右上で広げ、左下で狭めます。',
+          [FormatFloat('0.#', SelectedTextStyle.OutlineWidth)]);
+      end;
+    spdmOuterOutlineWidth:
+      begin
+        HintInfo^.CursorRect := Layout.OuterOutlineWidthRect;
+        HintInfo^.HintStr := Format('外フチ幅 %d%%。右上で広げ、左下で狭めます。0%%で外フチなし。',
+          [SelectedTextStyle.OuterOutlineWidth]);
+      end;
+    spdmOutlineBlur:
+      begin
+        HintInfo^.CursorRect := Layout.OutlineBlurRect;
+        HintInfo^.HintStr := 'フチのぼかし。右上にドラッグすると強まります。';
+      end;
+    spdmShadowOffset:
+      begin
+        HintInfo^.CursorRect := Layout.ShadowOffsetRect;
+        HintInfo^.HintStr := '影の位置。ドラッグした方向に移動します。';
+      end;
+    spdmShadowBlur:
+      begin
+        HintInfo^.CursorRect := Layout.ShadowBlurRect;
+        HintInfo^.HintStr := '影のぼかし。右下にドラッグすると強まります。';
+      end;
+    spdmShadowSpread:
+      begin
+        HintInfo^.CursorRect := Layout.ShadowSpreadRect;
+        HintInfo^.HintStr := '影の広がり。右下にドラッグすると広がります。';
+      end;
+  else
+    Exit;
+  end;
+  AMessage.Result := 0;
+end;
+
 function TFormSerifDrawSettings.TextPreviewHandleLayout:
   TSerifDrawTextPreviewLayout;
 var
@@ -1695,6 +1999,8 @@ var
   Scale: Double;
   Style: TSerifDrawLayerStyle;
 begin
+  if FDraggingPreview and (FDragMode = spdmOuterOutlineWidth) then
+    Exit(FDragStartTextLayout);
   Result := System.Default(TSerifDrawTextPreviewLayout);
   if (FSelectedSnapshotIndex < 0) or
     (FSelectedSnapshotIndex >= Length(FSnapshots)) or
@@ -1710,6 +2016,32 @@ begin
   Style := EditingTextStyle(FSnapshots[FSelectedSnapshotIndex].Layer);
   Result := SerifDrawTextPreviewLayout(PreviewPaintBox.ClientRect,
     LayoutRect, PreviewDestinationRect, CurrentPPI, Scale, Style);
+end;
+
+procedure TFormSerifDrawSettings.DrawTextPreviewHandles(const ACanvas: TCanvas);
+var
+  Layout: TSerifDrawTextPreviewLayout;
+  State: TSerifDrawTextPreviewHandleState;
+begin
+  Layout := TextPreviewHandleLayout;
+  State := Default(TSerifDrawTextPreviewHandleState);
+  State.Dpi := CurrentPPI;
+  State.LayoutRect := Layout.LayoutRect;
+  State.OutlineBlurRect := Layout.OutlineBlurRect;
+  State.OutlineWidthRect := Layout.OutlineWidthRect;
+  State.OuterOutlineWidthRect := Layout.OuterOutlineWidthRect;
+  State.ShadowBlurRect := Layout.ShadowBlurRect;
+  State.ShadowOffsetRect := Layout.ShadowOffsetRect;
+  State.ShadowSpreadRect := Layout.ShadowSpreadRect;
+  case FDragMode of
+    spdmOutlineBlur: State.ActiveHandle := sdthOutlineBlur;
+    spdmOutlineWidth: State.ActiveHandle := sdthOutlineWidth;
+    spdmOuterOutlineWidth: State.ActiveHandle := sdthOuterOutlineWidth;
+    spdmShadowBlur: State.ActiveHandle := sdthShadowBlur;
+    spdmShadowOffset: State.ActiveHandle := sdthShadowOffset;
+    spdmShadowSpread: State.ActiveHandle := sdthShadowSpread;
+  end;
+  DrawSerifDrawTextPreviewHandles(ACanvas, State);
 end;
 
 procedure TFormSerifDrawSettings.UpdateDraggedStyle(const AFontSize,
@@ -1810,6 +2142,27 @@ begin
   else
     FSettings.OutlineWidth := EnsureRange(AWidth, 0.0,
       SERIF_TEXT_OUTLINE_WIDTH_MAX_PERCENT);
+  RenderSelectedPreview(False);
+end;
+
+procedure TFormSerifDrawSettings.UpdateDraggedOuterOutlineWidth(const AWidth: Double);
+var
+  Style: TSerifDrawLayerStyle;
+  WidthPercent: Integer;
+begin
+  Style := SelectedTextStyle;
+  WidthPercent := Round(EnsureRange(AWidth, 0.0,
+    Double(SERIF_TEXT_OUTER_OUTLINE_WIDTH_MAX_PERCENT)));
+  if (WidthPercent = Style.OuterOutlineWidth) and
+    ((WidthPercent = 0) or Style.OutlineEnabled) then
+    Exit;
+  Style.OuterOutlineWidth := WidthPercent;
+  if WidthPercent > 0 then
+  begin
+    Style.OutlineEnabled := True;
+    FToolbarOutline.CheckState := tbcsChecked;
+  end;
+  FSettings.SetTextDecorationShape(Style, IsRoleNameEditorActive);
   RenderSelectedPreview(False);
 end;
 
@@ -1963,6 +2316,8 @@ begin
   FDragSnapXActive := False;
   FDragSnapYActive := False;
   FDragMode := HitTestPreview(Point(X, Y));
+  if FDragMode = spdmOuterOutlineWidth then
+    FDragStartTextLayout := TextPreviewHandleLayout;
   FPreviewDragScale := 1.0;
   FPreviewSelected := FDragMode <> spdmNone;
   if FDragMode = spdmNone then
@@ -1983,6 +2338,7 @@ begin
       FDragStartLetterSpacing := Style.LetterSpacing;
       FDragStartOutlineBlur := Style.OutlineBlur;
       FDragStartOutlineWidth := Style.OutlineWidth;
+      FDragStartOuterOutlineWidth := Style.OuterOutlineWidth;
       FDragStartShadowOffsetX := Style.ShadowOffsetX;
       FDragStartShadowOffsetY := Style.ShadowOffsetY;
       FDragStartShadowBlur := Style.ShadowBlur;
@@ -2235,6 +2591,7 @@ begin
   TextDragStart.LineSpacing := FDragStartLineSpacing;
   TextDragStart.OutlineBlur := FDragStartOutlineBlur;
   TextDragStart.OutlineWidth := FDragStartOutlineWidth;
+  TextDragStart.OuterOutlineWidth := FDragStartOuterOutlineWidth;
   TextDragStart.PositionX := FDragStartPositionX;
   TextDragStart.PositionY := FDragStartPositionY;
   TextDragStart.ShadowBlur := FDragStartShadowBlur;
@@ -2256,6 +2613,8 @@ begin
         TextDragResult.ShadowOffsetY);
     spdmOutlineWidth:
       UpdateDraggedOutlineWidth(TextDragResult.OutlineWidth);
+    spdmOuterOutlineWidth:
+      UpdateDraggedOuterOutlineWidth(TextDragResult.OuterOutlineWidth);
     spdmOutlineBlur:
       UpdateDraggedOutlineBlur(TextDragResult.OutlineBlur);
     spdmShadowBlur:
@@ -2400,7 +2759,7 @@ begin
     spdmFontSizeNorthEast, spdmFontSizeSouthWest,
     spdmFontSizeSouthEast, spdmLetterSpacingWest, spdmLetterSpacingEast,
     spdmLineSpacingNorth, spdmLineSpacingSouth, spdmOutlineBlur,
-    spdmOutlineWidth, spdmShadowBlur, spdmShadowOffset,
+    spdmOutlineWidth, spdmOuterOutlineWidth, spdmShadowBlur, spdmShadowOffset,
     spdmShadowSpread];
   if Abs(FPreviewDragScale - 1.0) > 0.000001 then
   begin
@@ -2434,8 +2793,6 @@ var
   SnapGuideX: Boolean;
   SnapGuideY: Boolean;
   TargetCanvas: TCanvas;
-  TextHandleState: TSerifDrawTextPreviewHandleState;
-  TextLayout: TSerifDrawTextPreviewLayout;
 
   procedure DrawBitmap(const ABitmap: Vcl.Graphics.TBitmap;
     const ARect: TRect);
@@ -2612,32 +2969,7 @@ begin
       (FPreviewBitmap.Width > 0) and (FPreviewBitmap.Height > 0) and
       (PreviewRect.Width > 0) and (PreviewRect.Height > 0) and
       FPreviewSelected and not IsFrameEditorActive then
-    begin
-      TextLayout := TextPreviewHandleLayout;
-      TextHandleState := System.Default(TSerifDrawTextPreviewHandleState);
-      TextHandleState.Dpi := CurrentPPI;
-      TextHandleState.LayoutRect := TextLayout.LayoutRect;
-      TextHandleState.OutlineBlurRect := TextLayout.OutlineBlurRect;
-      TextHandleState.OutlineWidthRect := TextLayout.OutlineWidthRect;
-      TextHandleState.ShadowBlurRect := TextLayout.ShadowBlurRect;
-      TextHandleState.ShadowOffsetRect := TextLayout.ShadowOffsetRect;
-      TextHandleState.ShadowSpreadRect := TextLayout.ShadowSpreadRect;
-      case FDragMode of
-        spdmOutlineBlur:
-          TextHandleState.ActiveHandle := sdthOutlineBlur;
-        spdmOutlineWidth:
-          TextHandleState.ActiveHandle := sdthOutlineWidth;
-        spdmShadowBlur:
-          TextHandleState.ActiveHandle := sdthShadowBlur;
-        spdmShadowOffset:
-          TextHandleState.ActiveHandle := sdthShadowOffset;
-        spdmShadowSpread:
-          TextHandleState.ActiveHandle := sdthShadowSpread;
-      else
-        TextHandleState.ActiveHandle := sdthNone;
-      end;
-      DrawSerifDrawTextPreviewHandles(TargetCanvas, TextHandleState);
-    end;
+      DrawTextPreviewHandles(TargetCanvas);
     if IsCommonFrameEditorActive then
       DrawSerifDrawCommonFrameGuide(TargetCanvas,
         CommonFramePreviewRect, CurrentPPI, FFrameDragHit,
@@ -2678,8 +3010,6 @@ var
   PreviewRect: TRect;
   SnapGuideX: Boolean;
   SnapGuideY: Boolean;
-  TextHandleState: TSerifDrawTextPreviewHandleState;
-  TextLayout: TSerifDrawTextPreviewLayout;
 
   procedure DrawFrame(const ARect: TRect;
     const AStyle: TSerifDrawFrameStyle);
@@ -2827,32 +3157,7 @@ begin
       FPreviewBitmap.Canvas.Handle, 0, 0, FPreviewBitmap.Width,
       FPreviewBitmap.Height, Blend);
     if FPreviewSelected and not IsFrameEditorActive then
-    begin
-      TextLayout := TextPreviewHandleLayout;
-      TextHandleState := System.Default(TSerifDrawTextPreviewHandleState);
-      TextHandleState.Dpi := CurrentPPI;
-      TextHandleState.LayoutRect := TextLayout.LayoutRect;
-      TextHandleState.OutlineBlurRect := TextLayout.OutlineBlurRect;
-      TextHandleState.OutlineWidthRect := TextLayout.OutlineWidthRect;
-      TextHandleState.ShadowBlurRect := TextLayout.ShadowBlurRect;
-      TextHandleState.ShadowOffsetRect := TextLayout.ShadowOffsetRect;
-      TextHandleState.ShadowSpreadRect := TextLayout.ShadowSpreadRect;
-      case FDragMode of
-        spdmOutlineBlur:
-          TextHandleState.ActiveHandle := sdthOutlineBlur;
-        spdmOutlineWidth:
-          TextHandleState.ActiveHandle := sdthOutlineWidth;
-        spdmShadowBlur:
-          TextHandleState.ActiveHandle := sdthShadowBlur;
-        spdmShadowOffset:
-          TextHandleState.ActiveHandle := sdthShadowOffset;
-        spdmShadowSpread:
-          TextHandleState.ActiveHandle := sdthShadowSpread;
-      else
-        TextHandleState.ActiveHandle := sdthNone;
-      end;
-      DrawSerifDrawTextPreviewHandles(FBackBuffer.Canvas, TextHandleState);
-    end;
+      DrawTextPreviewHandles(FBackBuffer.Canvas);
   end;
   if IsCommonFrameEditorActive then
     DrawSerifDrawCommonFrameGuide(FBackBuffer.Canvas,
@@ -3006,63 +3311,8 @@ var
   NewImage: TTextRenderImage;
   RenderScale: Double;
   Request: TTextRenderRequest;
-  Shadow: TTextRenderShadow;
   Snapshot: TSerifDrawSnapshot;
   Style: TSerifDrawLayerStyle;
-
-  procedure ApplyStyleToRequest(const AStyle: TSerifDrawLayerStyle);
-  var
-    OutlineBlurPixels: Double;
-    OutlineWidthPixels: Double;
-  begin
-    Request.FontFamilies := [AStyle.FontName, 'Yu Gothic UI', 'Meiryo UI',
-      'Segoe UI'];
-    Request.FontSize := Max(1.0, AStyle.FontSize * RenderScale);
-    Request.LetterSpacing := AStyle.LetterSpacing * RenderScale;
-    Request.LineSpacing := AStyle.LineSpacing * RenderScale;
-    Request.FontStyle := [];
-    if (AStyle.FontStyles and SERIF_FONT_BOLD) <> 0 then
-      Include(Request.FontStyle, TTextRenderFontStyleItem.Bold);
-    if (AStyle.FontStyles and SERIF_FONT_ITALIC) <> 0 then
-      Include(Request.FontStyle, TTextRenderFontStyleItem.Italic);
-    Request.FillColor := AStyle.FillColor;
-    // 設定とキャッシュキーには比率を保持し、Skiaへ渡す直前だけ実画素へ変換する。
-    OutlineWidthPixels := SerifDrawOutlineWidthPixels(AStyle.OutlineWidth,
-      AStyle.FontSize) * RenderScale;
-    OutlineBlurPixels := SerifDrawOutlineBlurPixels(AStyle.OutlineBlur,
-      AStyle.FontSize) * RenderScale;
-    if not AStyle.OutlineEnabled then
-      Request.Outlines := nil
-    else if OutlineBlurPixels <= 0 then
-      Request.Outlines := [TTextRenderOutline.Create(OutlineWidthPixels,
-        AStyle.OutlineColor)]
-    else if AStyle.BlurColor = AStyle.OutlineColor then
-      Request.Outlines := [TTextRenderOutline.Create(OutlineWidthPixels,
-        OutlineBlurPixels,
-        AStyle.BlurColor)]
-    else
-      Request.Outlines := [
-        TTextRenderOutline.Create(OutlineWidthPixels, OutlineBlurPixels,
-          AStyle.BlurColor),
-        TTextRenderOutline.Create(OutlineWidthPixels,
-          AStyle.OutlineColor)];
-    Request.Shadows := [];
-    if AStyle.ShadowEnabled then
-    begin
-      Shadow := System.Default(TTextRenderShadow);
-      Shadow.Offset := PointF(
-        SerifDrawShadowOffsetPixels(AStyle.ShadowOffsetX, AStyle.FontSize) *
-          RenderScale,
-        SerifDrawShadowOffsetPixels(AStyle.ShadowOffsetY, AStyle.FontSize) *
-          RenderScale);
-      Shadow.BlurRadius := SerifDrawShadowBlurPixels(AStyle.ShadowBlur,
-        AStyle.FontSize) * RenderScale;
-      Shadow.SpreadRadius := SerifDrawShadowSpreadPixels(
-        AStyle.ShadowSpread, AStyle.FontSize) * RenderScale;
-      Shadow.Color := AStyle.ShadowColor;
-      Request.Shadows := [Shadow];
-    end;
-  end;
 begin
   if (FPreviewRenderer = nil) or (FSelectedSnapshotIndex < 0) or
     (FSelectedSnapshotIndex >= Length(FSnapshots)) then
@@ -3098,7 +3348,7 @@ begin
     Request.Text := Snapshot.Serif;
     Request.Alignment := TTextRenderAlignment(Style.Alignment);
   end;
-  ApplyStyleToRequest(Style);
+  ApplySerifDrawTextStyle(Request, Style, RenderScale);
   NewImage := nil;
   CompanionImage := nil;
   CompanionBitmap := nil;
@@ -3132,7 +3382,7 @@ begin
         Request.Alignment := TTextRenderAlignment(
           FSettings.RoleNamePlacement mod 3);
       end;
-      ApplyStyleToRequest(Style);
+      ApplySerifDrawTextStyle(Request, Style, RenderScale);
       CompanionImage := FPreviewRenderer.Render(Request, Metrics);
       CompanionBitmap := CreatePreviewBitmap(CompanionImage);
       FreeAndNil(FCompanionPreviewImage);
@@ -3178,6 +3428,11 @@ begin
       Style.FillColor := (Style.FillColor and $00FFFFFF) or Alpha;
     sotOutline:
       Style.OutlineColor := (Style.OutlineColor and $00FFFFFF) or Alpha;
+    sotOuterOutline:
+      begin
+        Style.OuterOutlineColor := (Style.OuterOutlineColor and $00FFFFFF) or Alpha;
+        Style.HasOuterOutlineColor := True;
+      end;
     sotShadow:
       Style.ShadowColor := (Style.ShadowColor and $00FFFFFF) or Alpha;
     sotBlur:
@@ -3207,6 +3462,7 @@ begin
     case FOpacityTarget of
       sotText: Alpha := Byte(Style.FillColor shr 24);
       sotOutline: Alpha := Byte(Style.OutlineColor shr 24);
+      sotOuterOutline: Alpha := Byte(Style.OuterOutlineColor shr 24);
       sotShadow: Alpha := Byte(Style.ShadowColor shr 24);
       sotBlur: Alpha := Byte(Style.BlurColor shr 24);
     end;
@@ -3217,6 +3473,9 @@ begin
     if FToolbarOpacityOutline <> nil then
       FToolbarOpacityOutline.CheckState := TFormattingToolbarCheckState(
         Ord(FOpacityTarget = sotOutline));
+    if FToolbarOuterOutlineColor <> nil then
+      FToolbarOuterOutlineColor.CheckState := TFormattingToolbarCheckState(
+        Ord(FOpacityTarget = sotOuterOutline));
     if FToolbarOpacityShadow <> nil then
       FToolbarOpacityShadow.CheckState := TFormattingToolbarCheckState(
         Ord(FOpacityTarget = sotShadow));
@@ -3308,6 +3567,7 @@ begin
   case FColorTarget of
     sctText: Argb := Style.FillColor;
     sctOutline: Argb := Style.OutlineColor;
+    sctOuterOutline: Argb := Style.OuterOutlineColor;
     sctShadow: Argb := Style.ShadowColor;
     sctBlur: Argb := Style.BlurColor;
   end;
@@ -3321,6 +3581,9 @@ begin
     if FToolbarOutlineColor <> nil then
       FToolbarOutlineColor.CheckState := TFormattingToolbarCheckState(
         Ord(FOpacityTarget = sotOutline));
+    if FToolbarOuterOutlineColor <> nil then
+      FToolbarOuterOutlineColor.CheckState := TFormattingToolbarCheckState(
+        Ord(FOpacityTarget = sotOuterOutline));
     if FToolbarShadowColor <> nil then
       FToolbarShadowColor.CheckState := TFormattingToolbarCheckState(
         Ord(FOpacityTarget = sotShadow));
@@ -3368,6 +3631,10 @@ begin
     (Style.OutlineColor shr 8) and $FF, Style.OutlineColor and $FF);
   if FToolbarOutlineColor <> nil then
     FToolbarOutlineColor.AccentColor := Color;
+  Color := RGB((Style.OuterOutlineColor shr 16) and $FF,
+    (Style.OuterOutlineColor shr 8) and $FF, Style.OuterOutlineColor and $FF);
+  if FToolbarOuterOutlineColor <> nil then
+    FToolbarOuterOutlineColor.AccentColor := Color;
   Color := RGB((Style.BlurColor shr 16) and $FF,
     (Style.BlurColor shr 8) and $FF, Style.BlurColor and $FF);
   if FToolbarBlurColor <> nil then
